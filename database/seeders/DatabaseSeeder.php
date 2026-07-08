@@ -22,12 +22,24 @@ class DatabaseSeeder extends Seeder
             'contact_email' => 'owner@agency.gov.ph',
         ]);
 
+        foreach ($this->participatingAgencies() as $agencyData) {
+            Agency::firstOrCreate(['name' => $agencyData['name']], $agencyData);
+        }
+
         $user = User::create([
             'name' => 'test',
             'email' => 'test@example.com',
             'password' => Hash::make('password'),
             'role' => 'agency_admin',
             'agency_id' => $agency->id,
+        ]);
+
+        User::create([
+            'name' => 'Super Admin',
+            'email' => 'admin@rikms.gov.ph',
+            'password' => Hash::make('password'),
+            'role' => 'super_admin',
+            'agency_id' => null,
         ]);
 
         $this->seedSdgs();
@@ -157,6 +169,52 @@ class DatabaseSeeder extends Seeder
                 'color' => $color,
             ]);
         }
+    }
+
+    private function participatingAgencies(): array
+    {
+        return [
+            [
+                'name' => 'Commission on Higher Education - Region XI',
+                'region' => 'Davao Region - Higher Education',
+                'contact_email' => 'chedxi@example.gov.ph',
+            ],
+            [
+                'name' => 'National Economic and Development Authority - Region XI',
+                'region' => 'Davao Region - Socioeconomic Planning',
+                'contact_email' => 'nedaxi@example.gov.ph',
+            ],
+            [
+                'name' => 'Department of Trade and Industry - Region XI',
+                'region' => 'Davao Region - Trade and Industry',
+                'contact_email' => 'dtixi@example.gov.ph',
+            ],
+            [
+                'name' => 'Department of Information and Communications Technology - Region XI',
+                'region' => 'Davao Region - ICT Development',
+                'contact_email' => 'dictxi@example.gov.ph',
+            ],
+            [
+                'name' => 'Regional Health Research and Development Consortium XI',
+                'region' => 'Davao Region - Health Research',
+                'contact_email' => 'rhrdcxi@example.org',
+            ],
+            [
+                'name' => 'Davao Region Industry Energy and Emerging Technology Research and Development Consortium',
+                'region' => 'Davao Region - Industry, Energy, and Emerging Technology',
+                'contact_email' => 'drieerdc@example.org',
+            ],
+            [
+                'name' => 'Southern Mindanao Agriculture Aquatic and Natural Resources Research and Development Consortium',
+                'region' => 'Southern Mindanao - Agriculture, Aquatic, and Natural Resources',
+                'contact_email' => 'smaarrdec@example.org',
+            ],
+            [
+                'name' => 'University of Southeastern Philippines',
+                'region' => 'Davao Region - Higher Education Institution',
+                'contact_email' => 'research@usep.edu.ph',
+            ],
+        ];
     }
 
     private function createDocument(Agency $agency, User $user, array $data): Document
