@@ -158,3 +158,10 @@ document.querySelectorAll('[data-apply-pap]').forEach((button) => {
         });
     });
 });
+
+document.querySelectorAll('[data-password-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const field = button.closest('div').querySelector('[data-password-field]');
+        field.type = field.type === 'password' ? 'text' : 'password';
+    });
+});
