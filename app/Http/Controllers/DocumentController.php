@@ -8,9 +8,19 @@ use App\Models\Document;
 use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 class DocumentController extends Controller
 {
+    public function download(Document $document)
+    {
+    $this->authorize('view', $document);
+    abort_if(! $document->file_path || ! Storage::exists($document->file_path), 404);
+    $this->audit->log('file downloaded', $document, [], request());
+    
+    return Storage::download($document->file_path, $document->original_filename);
+    }
+    
     public function __construct(private readonly AuditLogService $audit)
     {
     }
