@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Agency;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -11,12 +10,10 @@ class AuthController extends Controller
     public function showLogin()
     {
         if (Auth::check()) {
-            return redirect()->route('dashboard');
+            return redirect('/agency/dashboard');
         }
 
-        return view('auth.login', [
-            'agencies' => Agency::orderBy('name')->get(),
-        ]);
+        return view('spa', ['bootstrap' => []]);
     }
 
     public function login(Request $request)
@@ -29,11 +26,32 @@ class AuthController extends Controller
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
 
-            return redirect()->intended(route('dashboard'));
+            $user = Auth::user();
+            $redirect = $user?->role === 'super_admin' ? '/admin/dashboard' : '/agency/dashboard';
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'redirect' => $redirect,
+                    'user' => [
+                        'id' => $user?->id,
+                        'name' => $user?->name,
+                        'email' => $user?->email,
+                        'role' => $user?->role,
+                    ],
+                ]);
+            }
+
+            return redirect()->intended($redirect);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'The provided credentials do not match an active RIKMS account.',
+            ], 422);
         }
 
         return back()
-            ->withErrors(['email' => 'The provided credentials do not match the demo account.'])
+            ->withErrors(['email' => 'The provided credentials do not match an active RIKMS account.'])
             ->onlyInput('email');
     }
 
@@ -43,6 +61,10 @@ class AuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login');
+        if ($request->expectsJson()) {
+            return response()->json(['redirect' => '/login']);
+        }
+
+        return redirect('/login');
     }
 }
