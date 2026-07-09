@@ -96,4 +96,39 @@ class DocumentProcessingTest extends TestCase
             $this->assertEquals('passed', $document->integrity_status); // Integrity passed, but malware failed
         }
     }
+
+    public function test_spa_endpoints_upload_draft_and_analyze(): void
+    {
+        Storage::fake('local');
+        $user = User::where('email', 'test@example.com')->firstOrFail();
+        $file = UploadedFile::fake()->create('sample-paper.pdf', 10, 'application/pdf');
+
+        $response = $this->actingAs($user)->postJson('/api/rikms/documents/upload-draft', [
+            'document_type' => 'research',
+            'document_file' => $file,
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonStructure(['document_id', 'original_filename', 'file_size']);
+        $documentId = $response->json('document_id');
+
+        $document = Document::findOrFail($documentId);
+        $this->assertEquals('draft', $document->status);
+
+        $document->update([
+            'extracted_text' => "TITLE: AI Innovation in Regional Agriculture\nABSTRACT: This research discusses how Artificial Intelligence and farming technologies improve agricultural output in Region XI."
+        ]);
+
+        $analyzeResponse = $this->actingAs($user)->postJson("/api/rikms/documents/{$documentId}/analyze");
+
+        $analyzeResponse->assertOk();
+        $analyzeResponse->assertJsonFragment([
+            'title' => 'AI Innovation in Regional Agriculture',
+        ]);
+        $this->assertStringContainsString('Artificial Intelligence and farming technologies', $analyzeResponse->json('abstract'));
+
+        $suggestedSdgs = collect($analyzeResponse->json('suggested_sdgs'))->pluck('sdg')->toArray();
+        $this->assertContains(2, $suggestedSdgs); // Agriculture / hunger matched
+        $this->assertContains(9, $suggestedSdgs); // Technology / innovation matched
+    }
 }

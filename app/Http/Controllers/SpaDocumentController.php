@@ -19,6 +19,7 @@ class SpaDocumentController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'document_id' => ['nullable', 'integer', 'exists:documents,id'],
             'document_type' => ['required', 'in:research,terminal,pap'],
             'submit_mode' => ['required', 'in:draft,submit'],
             'title' => ['nullable', 'string', 'max:500'],
@@ -54,17 +55,14 @@ class SpaDocumentController extends Controller
         $title = $metadata['title'] ?? $validated['title'] ?? 'Untitled research record';
         $status = $validated['submit_mode'] === 'submit' ? 'pending' : 'draft';
         $file = $request->file('document_file');
+        $documentId = $request->input('document_id');
 
-        $document = Document::create([
+        $documentData = [
             'agency_id' => $agencyId,
             'uploaded_by' => $user->id,
             'document_type' => $documentType,
             'title' => $title,
             'description' => $validated['description'] ?? $metadata['abstract'] ?? null,
-            'file_path' => $file?->store('research-documents'),
-            'original_filename' => $file?->getClientOriginalName(),
-            'mime_type' => $file?->getMimeType(),
-            'file_size' => $file?->getSize(),
             'status' => $status,
             'year' => $validated['year'] ?? now()->year,
             'category' => $documentType === Document::RESEARCH_STUDY ? 'Research Study' : $this->categoryFromDocType($documentType),
@@ -73,25 +71,49 @@ class SpaDocumentController extends Controller
             'external_url' => $validated['external_url'] ?? null,
             'owner_name' => $user->name,
             'owner_email' => $user->email,
-            'notify_access_requests' => true,
             'is_ai_tagged' => ! empty($metadata),
             'completion_score' => $validated['submit_mode'] === 'submit' ? 100 : 70,
             'digital_library_score' => 70,
             'submitted_at' => $validated['submit_mode'] === 'submit' ? now() : null,
-        ]);
+        ];
 
-        $document->metadata()->create([
-            'title' => $title,
-            'abstract' => $metadata['abstract'] ?? null,
-            'methodology' => $metadata['methodology'] ?? null,
-            'review_of_related_literature' => $metadata['relatedLiterature'] ?? null,
-            'theoretical_framework' => $metadata['theoreticalFramework'] ?? null,
-            'results_and_discussion' => $metadata['resultsDiscussion'] ?? null,
-            'keywords' => $this->splitList($metadata['keywords'] ?? ''),
-            'authors' => $this->splitList($metadata['authors'] ?? ''),
-            'ai_confidence' => ! empty($metadata) ? 0.88 : null,
-            'raw_ai_json' => $metadata ?: null,
-        ]);
+        if ($file) {
+            $documentData['file_path'] = $file->store('research-documents');
+            $documentData['original_filename'] = $file->getClientOriginalName();
+            $documentData['mime_type'] = $file->getMimeType();
+            $documentData['file_size'] = $file->getSize();
+        }
+
+        if ($documentId) {
+            $document = Document::findOrFail($documentId);
+            $this->authorize('update', $document);
+            $document->update($documentData);
+
+            // Clean existing relationship rows to prevent duplication on update
+            $document->publicFields()->delete();
+            $document->performanceRows()->delete();
+            $document->papClassifications()->delete();
+            $document->financial()?->delete();
+            $document->highlights()->delete();
+        } else {
+            $document = Document::create($documentData);
+        }
+
+        $document->metadata()->updateOrCreate(
+            ['document_id' => $document->id],
+            [
+                'title' => $title,
+                'abstract' => $metadata['abstract'] ?? null,
+                'methodology' => $metadata['methodology'] ?? null,
+                'review_of_related_literature' => $metadata['relatedLiterature'] ?? null,
+                'theoretical_framework' => $metadata['theoreticalFramework'] ?? null,
+                'results_and_discussion' => $metadata['resultsDiscussion'] ?? null,
+                'keywords' => $this->splitList($metadata['keywords'] ?? ''),
+                'authors' => $this->splitList($metadata['authors'] ?? ''),
+                'ai_confidence' => ! empty($metadata) ? 0.88 : null,
+                'raw_ai_json' => $metadata ?: null,
+            ]
+        );
 
         if ($file) {
             \App\Jobs\ProcessDocumentJob::dispatch($document);
@@ -243,5 +265,65 @@ class SpaDocumentController extends Controller
             'pwds' => 'PWDs',
             'unserved' => 'Unserved / Underserved',
         ][$id] ?? $id;
+    }
+
+    public function runAiAnalysis(Document $document, \App\Services\AiMetadataExtractionService $ai)
+    {
+        $this->authorize('update', $document);
+
+        $result = $ai->analyze($document);
+
+        return response()->json($result);
+    }
+
+    public function uploadDraft(Request $request)
+    {
+        $request->validate([
+            'document_type' => ['required', 'in:research,terminal,pap'],
+            'document_file' => ['required', 'file', 'mimes:pdf,doc,docx', 'max:10240'],
+        ]);
+
+        $user = Auth::user();
+        abort_if(! $user, 401);
+        $agencyId = $user->agency_id ?? Agency::query()->value('id');
+
+        $documentType = match ($request->input('document_type')) {
+            'terminal' => Document::TERMINAL_REPORT,
+            'pap' => Document::PROJECT_ACCOMPLISHMENT_REPORT,
+            default => Document::RESEARCH_STUDY,
+        };
+
+        $file = $request->file('document_file');
+
+        $document = Document::create([
+            'agency_id' => $agencyId,
+            'uploaded_by' => $user->id,
+            'document_type' => $documentType,
+            'title' => 'Draft Upload: ' . $file->getClientOriginalName(),
+            'file_path' => $file->store('research-documents'),
+            'original_filename' => $file->getClientOriginalName(),
+            'mime_type' => $file->getMimeType(),
+            'file_size' => $file->getSize(),
+            'status' => 'draft',
+            'year' => now()->year,
+            'category' => $documentType === Document::RESEARCH_STUDY ? 'Research Study' : $this->categoryFromDocType($documentType),
+            'access_mode' => 'public_download',
+            'owner_name' => $user->name,
+            'owner_email' => $user->email,
+            'completion_score' => 10,
+        ]);
+
+        try {
+            $processor = resolve(\App\Services\DocumentProcessingService::class);
+            $processor->process($document);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning("Immediate draft processing failed: " . $e->getMessage());
+        }
+
+        return response()->json([
+            'document_id' => $document->id,
+            'original_filename' => $document->original_filename,
+            'file_size' => $document->file_size,
+        ]);
     }
 }

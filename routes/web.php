@@ -46,6 +46,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/access-requests/{accessRequest}/approve', [AccessRequestController::class, 'approve'])->name('access-requests.approve');
     Route::post('/access-requests/{accessRequest}/reject', [AccessRequestController::class, 'reject'])->name('access-requests.reject');
 
+    Route::post('/api/rikms/documents/{document}/analyze', [SpaDocumentController::class, 'runAiAnalysis'])->name('api.rikms.documents.analyze');
+    Route::post('/api/rikms/documents/upload-draft', [SpaDocumentController::class, 'uploadDraft'])->name('api.rikms.documents.upload-draft');
+
     Route::get('/agency/{any?}', SpaController::class)
         ->where('any', '.*')
         ->name('agency.spa');
