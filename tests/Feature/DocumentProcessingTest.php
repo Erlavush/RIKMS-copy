@@ -131,4 +131,85 @@ class DocumentProcessingTest extends TestCase
         $this->assertContains(2, $suggestedSdgs); // Agriculture / hunger matched
         $this->assertContains(9, $suggestedSdgs); // Technology / innovation matched
     }
+
+    public function test_document_approve_reject_and_rerun_ai(): void
+    {
+        Storage::fake('local');
+        $user = User::where('email', 'test@example.com')->firstOrFail();
+        $file = UploadedFile::fake()->create('sample-paper.pdf', 10, 'application/pdf');
+
+        $document = Document::create([
+            'agency_id' => $user->agency_id,
+            'uploaded_by' => $user->id,
+            'document_type' => Document::RESEARCH_STUDY,
+            'title' => 'Initial Title',
+            'file_path' => $file->store('research-documents', 'local'),
+            'original_filename' => 'sample-paper.pdf',
+            'mime_type' => 'application/pdf',
+            'file_size' => $file->getSize(),
+            'status' => 'pending',
+        ]);
+
+        $document->update([
+            'extracted_text' => "TITLE: Real Extracted Title\nABSTRACT: This is the real parsed abstract body.\nKEYWORDS: machine learning, regional analysis"
+        ]);
+        $response = $this->actingAs($user)->postJson("/api/rikms/documents/{$document->id}/re-run-ai");
+        $response->assertOk();
+        $response->assertJsonFragment([
+            'title' => 'Real Extracted Title',
+        ]);
+
+        $document->refresh();
+        $this->assertEquals('Real Extracted Title', $document->metadata->title);
+
+        $approveResponse = $this->actingAs($user)->postJson("/api/rikms/documents/{$document->id}/approve");
+        $approveResponse->assertOk()->assertJson(['status' => 'success', 'document_status' => 'published']);
+
+        $document->refresh();
+        $this->assertEquals('published', $document->status);
+        $this->assertNotNull($document->published_at);
+
+        $rejectResponse = $this->actingAs($user)->postJson("/api/rikms/documents/{$document->id}/reject", ['reason' => 'Missing budget info']);
+        $rejectResponse->assertOk()->assertJson(['status' => 'success', 'document_status' => 'rejected']);
+
+        $document->refresh();
+        $this->assertEquals('rejected', $document->status);
+    }
+
+    public function test_spa_visibility_filtering(): void
+    {
+        $agencyAdmin = User::where('email', 'test@example.com')->firstOrFail();
+
+        $draftDoc1 = Document::create([
+            'agency_id' => $agencyAdmin->agency_id,
+            'uploaded_by' => $agencyAdmin->id,
+            'document_type' => Document::RESEARCH_STUDY,
+            'title' => 'Agency Admin Draft Research',
+            'status' => 'draft',
+        ]);
+
+        $draftDoc2 = Document::create([
+            'agency_id' => $agencyAdmin->agency_id + 1,
+            'uploaded_by' => $agencyAdmin->id + 1,
+            'document_type' => Document::RESEARCH_STUDY,
+            'title' => 'Other Agency Draft Research',
+            'status' => 'draft',
+        ]);
+
+        $guestResponse = $this->getJson('/api/rikms/bootstrap');
+        $guestResponse->assertOk();
+
+        $guestResearchData = collect($guestResponse->json('researchData'));
+        $this->assertEmpty($guestResearchData->where('title', 'Agency Admin Draft Research'));
+        $this->assertEmpty($guestResearchData->where('title', 'Other Agency Draft Research'));
+        $this->assertEmpty($guestResponse->json('accessRequests'));
+        $this->assertEmpty($guestResponse->json('auditLogs'));
+
+        $adminResponse = $this->actingAs($agencyAdmin)->getJson('/api/rikms/bootstrap');
+        $adminResponse->assertOk();
+
+        $adminResearchData = collect($adminResponse->json('researchData'));
+        $this->assertNotEmpty($adminResearchData->where('title', 'Agency Admin Draft Research'));
+        $this->assertEmpty($adminResearchData->where('title', 'Other Agency Draft Research'));
+    }
 }

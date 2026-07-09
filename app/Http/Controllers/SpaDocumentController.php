@@ -326,4 +326,65 @@ class SpaDocumentController extends Controller
             'file_size' => $document->file_size,
         ]);
     }
+
+    public function approve(Document $document, Request $request)
+    {
+        $this->authorize('update', $document);
+
+        $document->update([
+            'status' => 'published',
+            'published_at' => now(),
+        ]);
+
+        $this->audit->log('approved and published', $document, [], $request);
+
+        return response()->json([
+            'status' => 'success',
+            'document_status' => 'published',
+        ]);
+    }
+
+    public function reject(Document $document, Request $request)
+    {
+        $this->authorize('update', $document);
+
+        $document->update([
+            'status' => 'rejected',
+        ]);
+
+        $this->audit->log('rejected', $document, ['reason' => $request->input('reason')], $request);
+
+        return response()->json([
+            'status' => 'success',
+            'document_status' => 'rejected',
+        ]);
+    }
+
+    public function reRunAi(Document $document, \App\Services\AiMetadataExtractionService $ai, Request $request)
+    {
+        $this->authorize('update', $document);
+
+        $result = $ai->analyze($document);
+
+        $document->metadata()->updateOrCreate(
+            ['document_id' => $document->id],
+            [
+                'title' => $result['title'],
+                'abstract' => $result['abstract'],
+                'methodology' => $result['methodology'],
+                'review_of_related_literature' => $result['review_of_related_literature'],
+                'theoretical_framework' => $result['theoretical_framework'],
+                'results_and_discussion' => $result['results_and_discussion'],
+                'keywords' => $result['keywords'],
+                'authors' => $result['authors'],
+                'doi' => $result['doi'],
+                'ai_confidence' => 0.88,
+                'raw_ai_json' => $result,
+            ]
+        );
+
+        $this->audit->log('re-ran AI analysis', $document, [], $request);
+
+        return response()->json($result);
+    }
 }

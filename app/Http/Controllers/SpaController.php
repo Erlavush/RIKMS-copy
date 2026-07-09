@@ -25,10 +25,55 @@ class SpaController extends Controller
 
     private function payload(): array
     {
-        $documents = Document::query()
-            ->with(['metadata', 'sdgTags', 'agency', 'uploader'])
-            ->latest('updated_at')
-            ->get();
+        $currentUser = Auth::user()?->load('agency');
+
+        // 1. Documents visibility filtering
+        $documentsQuery = Document::query()
+            ->with(['metadata', 'sdgTags', 'agency', 'uploader']);
+
+        if (!$currentUser) {
+            $documentsQuery->where('status', 'published');
+        } elseif ($currentUser->role !== 'super_admin') {
+            $documentsQuery->where(function ($query) use ($currentUser) {
+                $query->where('status', 'published')
+                      ->orWhere('agency_id', $currentUser->agency_id);
+            });
+        }
+        $documents = $documentsQuery->latest('updated_at')->get();
+
+        // 2. Access Requests filtering
+        $accessRequestsQuery = AccessRequest::query()
+            ->with(['document.metadata', 'requester'])
+            ->latest()
+            ->take(50);
+
+        if (!$currentUser) {
+            $accessRequests = collect();
+        } elseif ($currentUser->role !== 'super_admin') {
+            $accessRequests = $accessRequestsQuery->whereHas('document', function ($query) use ($currentUser) {
+                $query->where('agency_id', $currentUser->agency_id);
+            })->get();
+        } else {
+            $accessRequests = $accessRequestsQuery->get();
+        }
+
+        // 3. Audit Logs filtering
+        $auditLogsQuery = AuditLog::query()
+            ->with(['document.metadata', 'user'])
+            ->latest()
+            ->take(75);
+
+        if (!$currentUser) {
+            $auditLogs = collect();
+        } elseif ($currentUser->role !== 'super_admin') {
+            $auditLogs = $auditLogsQuery->where(function ($query) use ($currentUser) {
+                $query->whereHas('document', function ($docQuery) use ($currentUser) {
+                    $docQuery->where('agency_id', $currentUser->agency_id);
+                })->orWhere('user_id', $currentUser->id);
+            })->get();
+        } else {
+            $auditLogs = $auditLogsQuery->get();
+        }
 
         $agencies = Agency::query()
             ->withCount('documents')
@@ -39,8 +84,6 @@ class SpaController extends Controller
             ->withCount('documents')
             ->orderBy('number')
             ->get();
-
-        $currentUser = Auth::user()?->load('agency');
 
         return [
             'currentUser' => $currentUser ? [
@@ -101,11 +144,7 @@ class SpaController extends Controller
                 'sdgsCovered' => $sdgs->where('documents_count', '>', 0)->count(),
                 'latestPublications' => $documents->where('published_at', '!=', null)->count(),
             ],
-            'accessRequests' => AccessRequest::query()
-                ->with(['document.metadata', 'requester'])
-                ->latest()
-                ->take(50)
-                ->get()
+            'accessRequests' => $accessRequests
                 ->map(fn (AccessRequest $request) => [
                     'id' => $request->id,
                     'documentId' => $request->document_id,
@@ -116,11 +155,7 @@ class SpaController extends Controller
                     'status' => $request->status,
                     'createdAt' => $request->created_at?->toDateTimeString(),
                 ])->values(),
-            'auditLogs' => AuditLog::query()
-                ->with(['document.metadata', 'user'])
-                ->latest()
-                ->take(75)
-                ->get()
+            'auditLogs' => $auditLogs
                 ->map(fn (AuditLog $log) => [
                     'id' => $log->id,
                     'action' => $log->action,

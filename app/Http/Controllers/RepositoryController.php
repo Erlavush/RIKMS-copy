@@ -8,7 +8,9 @@ class RepositoryController extends Controller
 {
     public function index()
     {
-        $documents = Document::with(['metadata', 'sdgTags', 'agency'])
+        $documents = Document::query()
+            ->where('status', 'published')
+            ->with(['metadata', 'sdgTags', 'agency'])
             ->orderByRaw("case when title like 'Cybersecurity data science%' then 0 when title like 'Changes-in-thyroid%' then 1 when title like 'NEAR-REALTIME%' then 2 else 3 end")
             ->latest()
             ->take(6)
