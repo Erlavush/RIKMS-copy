@@ -6,7 +6,6 @@ use App\Models\Document;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Smalot\PdfParser\Parser;
 
 class AiMetadataExtractionService
 {
@@ -17,15 +16,7 @@ class AiMetadataExtractionService
             $filePath = Storage::disk('local')->path($document->file_path);
             $mimeType = $document->mime_type;
 
-            if ($mimeType === 'application/pdf' || str_ends_with(strtolower($filePath), '.pdf')) {
-                try {
-                    $parser = new Parser();
-                    $pdf = $parser->parseFile($filePath);
-                    $text = $pdf->getText();
-                } catch (\Exception $e) {
-                    Log::error('PDF parsing failed in AiMetadataExtractionService: ' . $e->getMessage());
-                }
-            } else {
+            if ($mimeType !== 'application/pdf' && !str_ends_with(strtolower($filePath), '.pdf')) {
                 try {
                     $text = file_get_contents($filePath);
                 } catch (\Exception $e) {
