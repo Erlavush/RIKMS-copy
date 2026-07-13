@@ -1,0 +1,9 @@
+STDOUT:
+
+C:\Program Files\ZAP\Zed Attack Proxy>if exist "C:\Users\Alpha Palconit\ZAP\.ZAP_JVM.properties" (set /p jvmopts= 0<"C:\Users\Alpha Palconit\ZAP\.ZAP_JVM.properties" )  else (set jvmopts=-Xmx512m ) 
+
+C:\Program Files\ZAP\Zed Attack Proxy>java -Xmx512m -jar zap-2.17.0.jar -help 
+
+STDERR:
+Picked up JAVA_TOOL_OPTIONS: -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8
+The home directory is already in use. Ensure no other ZAP instances are running with the same home directory: C:\Users\Alpha Palconit\ZAP\
