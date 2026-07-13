@@ -1,0 +1,35 @@
+# Operations Runbook
+
+## Scheduled work
+
+- Run `php artisan schedule:run` every minute. RIKMS schedules `rikms:weekly-digests` for Monday at 08:00 in `Asia/Manila`; `withoutOverlapping` prevents duplicate concurrent runs.
+- Keep at least one `php artisan queue:work --tries=3` process supervised and restart it after each release. The weekly digest email is queued, so running the scheduler without a worker is insufficient.
+- Monitor failed jobs and retry only after the underlying cause is understood.
+
+Example cron entry (replace the application path and PHP binary):
+
+```cron
+* * * * * cd /srv/rikms && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
+```
+
+## Backups
+
+- Back up the production database and private document store at least daily.
+- Encrypt backups, restrict access, and define retention with the system owner.
+- Perform a restore drill at least quarterly. A backup is not considered valid until restoration is verified.
+
+## Monitoring
+
+Alert on elevated 5xx responses, queue failures, login abuse, storage exhaustion, database saturation, mail failures, and repeated authorization denials. Retain application logs and audit logs according to an approved privacy and records-retention policy.
+
+## Incident response
+
+1. Preserve relevant application, proxy, authentication, and audit logs.
+2. Revoke compromised sessions and credentials.
+3. Place the application in maintenance mode if integrity or confidentiality is at risk.
+4. Correct the issue, rotate affected secrets, and verify authorization tests before reopening.
+5. Record impact, timeline, recovery actions, and follow-up controls.
+
+## Routine verification
+
+Run `composer test`, `composer analyse`, and `npm run check` before deployment. Periodically verify a complete upload, review, publication, access-request, approval, and download flow using non-sensitive test data. Confirm queue health, the scheduler, outbound mail, and the latest backup on every release.

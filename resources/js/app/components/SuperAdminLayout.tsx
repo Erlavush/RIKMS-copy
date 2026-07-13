@@ -1,280 +1,437 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import {
-  LayoutDashboard,
-  Building2,
-  Users,
-  Database,
-  ShieldCheck,
-  Eye,
-  BarChart3,
-  FileText,
-  KeyRound,
-  ShieldAlert,
-  Archive,
-  Settings,
-  Search,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  LogOut,
-  User,
-  Menu,
-  X,
-  Bell,
-  BookOpen,
+    Archive,
+    BarChart3,
+    Bell,
+    BookOpen,
+    Building2,
+    ChevronDown,
+    ChevronLeft,
+    ChevronRight,
+    Database,
+    Eye,
+    FileText,
+    KeyRound,
+    LayoutDashboard,
+    LogOut,
+    Menu,
+    Search,
+    Settings,
+    ShieldAlert,
+    ShieldCheck,
+    User,
+    Users,
+    X,
 } from "lucide-react";
+
+import {
+    getCurrentUser,
+    getNotifications,
+    markAllNotificationsRead,
+    markNotificationRead,
+} from "../lib/admin-api";
+import type { NotificationRecord } from "../lib/admin-api";
 import { postJson } from "../lib/http";
+import { formatDate } from "./super-admin/admin-ui-utils";
 
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/admin/dashboard" },
-  { icon: Building2, label: "Agency Management", href: "/admin/agencies" },
-  { icon: Users, label: "Agency Admin Users", href: "/admin/users" },
-  { icon: Database, label: "System Research", href: "/admin/research" },
-  { icon: ShieldCheck, label: "Research Integrity & Moderation", href: "/admin/moderation" },
-  { icon: Eye, label: "Access Request Monitoring", href: "/admin/access-monitoring" },
-  { icon: BarChart3, label: "System Analytics", href: "/admin/analytics" },
-  { icon: FileText, label: "System Notifications & Activity Logs", href: "/admin/activity" },
-  { icon: KeyRound, label: "RBAC Management", href: "/admin/rbac" },
-  { icon: ShieldAlert, label: "Security Center", href: "/admin/security" },
-  { icon: Archive, label: "Archive", href: "/admin/archive" },
-  { icon: Settings, label: "Platform Settings", href: "/admin/settings" },
-];
-
-function SidebarTooltip({ label, show }: { label: string; show: boolean }) {
-  if (!show) return null;
-  return (
-    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-      <div className="px-2.5 py-1.5 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap shadow-lg" style={{ fontWeight: 500 }}>
-        {label}
-      </div>
-    </div>
-  );
-}
+    { icon: LayoutDashboard, label: "Dashboard", href: "/admin/dashboard" },
+    { icon: Building2, label: "Agency Management", href: "/admin/agencies" },
+    { icon: Users, label: "Agency Admin Users", href: "/admin/users" },
+    { icon: Database, label: "System Research", href: "/admin/research" },
+    { icon: ShieldCheck, label: "Research Moderation", href: "/admin/moderation" },
+    { icon: Eye, label: "Access Monitoring", href: "/admin/access-monitoring" },
+    { icon: BarChart3, label: "System Analytics", href: "/admin/analytics" },
+    { icon: FileText, label: "Activity Logs", href: "/admin/activity" },
+    { icon: KeyRound, label: "RBAC", href: "/admin/rbac" },
+    { icon: ShieldAlert, label: "Security Center", href: "/admin/security" },
+    { icon: Archive, label: "Archive", href: "/admin/archive" },
+    { icon: Settings, label: "Platform Settings", href: "/admin/settings" },
+] as const;
 
 export function SuperAdminLayout() {
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const location = useLocation();
-  const logout = async () => {
-    await postJson<{ redirect: string }>("/logout", {});
-    window.location.href = "/admin/login";
-  };
+    const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [profileOpen, setProfileOpen] = useState(false);
+    const [notificationsOpen, setNotificationsOpen] = useState(false);
+    const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+    const [notificationsError, setNotificationsError] = useState<string | null>(null);
+    const [search, setSearch] = useState("");
+    const [adminName, setAdminName] = useState("Administrator");
+    const [identityLoading, setIdentityLoading] = useState(true);
+    const [logoutError, setLogoutError] = useState<string | null>(null);
+    const location = useLocation();
+    const navigate = useNavigate();
 
-  useEffect(() => {
-    const handleResize = () => {
-      const w = window.innerWidth;
-      if (w >= 1024) {
+    useEffect(() => {
+        let active = true;
+        getCurrentUser()
+            .then((response) => {
+                if (!active) return;
+                if (response.data.mustChangePassword) {
+                    window.location.assign("/change-password");
+                    return;
+                }
+                if (response.data.name) setAdminName(response.data.name);
+                setIdentityLoading(false);
+            })
+            .catch(() => {
+                if (active) setIdentityLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        getNotifications()
+            .then((response) => {
+                if (active) setNotifications(response.data);
+            })
+            .catch((reason) => {
+                if (active)
+                    setNotificationsError(
+                        reason instanceof Error ? reason.message : "Unable to load notifications.",
+                    );
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    useEffect(() => {
         setMobileDrawerOpen(false);
-        setMobileSearchOpen(false);
-      } else if (w >= 768) {
-        setSidebarCollapsed(true);
-        setMobileDrawerOpen(false);
-        setMobileSearchOpen(false);
-      } else {
-        setMobileDrawerOpen(false);
-      }
+        setProfileOpen(false);
+        setNotificationsOpen(false);
+    }, [location.pathname]);
+
+    const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const value = search.trim();
+        navigate(value ? `/admin/research?search=${encodeURIComponent(value)}` : "/admin/research");
     };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
-  const sidebarWidth = sidebarCollapsed ? "72px" : "240px";
+    const logout = async () => {
+        setLogoutError(null);
+        try {
+            await postJson<{ redirect?: string }>("/logout", {});
+            window.location.assign("/admin/login");
+        } catch (reason) {
+            setLogoutError(reason instanceof Error ? reason.message : "Unable to sign out.");
+        }
+    };
 
-  return (
-    <div className="min-h-screen bg-[#F3F4F6] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
-      {/* TOP NAV */}
-      <header className="bg-[#0F172A] border-b border-white/10 h-16 flex items-center px-6 sticky top-0 z-50">
-        {/* Mobile menu */}
-        <button className="lg:hidden mr-3 p-2 rounded-lg text-white/60 hover:bg-white/10 transition-colors" onClick={() => setMobileDrawerOpen(true)}>
-          <Menu className="w-5 h-5" />
-        </button>
+    const readNotification = async (notification: NotificationRecord) => {
+        if (notification.read) return;
+        try {
+            const response = await markNotificationRead(notification.id);
+            setNotifications((items) =>
+                items.map((item) => (item.id === notification.id ? response.data : item)),
+            );
+        } catch (reason) {
+            setNotificationsError(
+                reason instanceof Error ? reason.message : "Unable to update the notification.",
+            );
+        }
+    };
 
-        {/* Logo */}
-        <Link to="/admin/dashboard" className="flex items-center gap-2.5 mr-6">
-          <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center">
-            <BookOpen className="w-5 h-5 text-amber-400" />
-          </div>
-          <div className="hidden sm:block">
-            <span className="text-white tracking-tight block" style={{ fontSize: "0.85rem", fontWeight: 700, lineHeight: 1.2 }}>
-              RIKMS
-            </span>
-            <span className="text-white/40 block" style={{ fontSize: "0.65rem", fontWeight: 500 }}>
-              System Administration
-            </span>
-          </div>
-        </Link>
+    const readAllNotifications = async () => {
+        try {
+            await markAllNotificationsRead();
+            setNotifications((items) =>
+                items.map((item) => ({ ...item, read: true, readAt: new Date().toISOString() })),
+            );
+        } catch (reason) {
+            setNotificationsError(
+                reason instanceof Error ? reason.message : "Unable to update notifications.",
+            );
+        }
+    };
 
-        {/* Search */}
-        <div className="flex-1 max-w-md hidden md:block">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search agencies, users, or research records..."
-              className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400/30"
-            />
-          </div>
-        </div>
-
-        {/* Mobile search toggle */}
-        <button className="md:hidden ml-auto mr-2 p-2 rounded-lg text-white/60 hover:bg-white/10 transition-colors" onClick={() => setMobileSearchOpen(!mobileSearchOpen)}>
-          <Search className="w-5 h-5" />
-        </button>
-
-        <div className="flex items-center gap-2 ml-auto">
-          {/* Notifications */}
-          <button className="relative p-2 rounded-lg text-white/60 hover:bg-white/10 transition-colors">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-          </button>
-
-          {/* Profile */}
-          <div className="relative">
-            <button
-              onClick={() => setProfileOpen(!profileOpen)}
-              className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center">
-                <User className="w-4 h-4 text-amber-400" />
-              </div>
-              <span className="hidden sm:block text-sm text-white/80" style={{ fontWeight: 500 }}>Super Admin</span>
-              <ChevronDown className="w-3.5 h-3.5 text-white/40 hidden sm:block" />
-            </button>
-            {profileOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
-                <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-lg border border-gray-200 py-1.5 z-50">
-                  <button className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-                    <User className="w-4 h-4 text-gray-400" /> Profile
-                  </button>
-                  <button className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5">
-                    <ShieldAlert className="w-4 h-4 text-gray-400" /> Security Settings
-                  </button>
-                  <div className="border-t border-gray-100 my-1" />
-                  <button
-                    onClick={() => { setProfileOpen(false); void logout(); }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5"
-                  >
-                    <LogOut className="w-4 h-4" /> Logout
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* Mobile search bar */}
-      {mobileSearchOpen && (
-        <div className="md:hidden bg-[#0F172A] border-b border-white/10 px-4 py-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search..."
-              autoFocus
-              className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-1">
-        {/* SIDEBAR – Desktop */}
-        <aside
-          className="hidden lg:flex flex-col bg-[#0F172A] border-r border-white/10 sticky top-16 h-[calc(100vh-64px)] transition-all duration-200 overflow-hidden z-40"
-          style={{ width: sidebarWidth, minWidth: sidebarWidth }}
-        >
-          <nav className="flex-1 py-3 overflow-y-auto custom-scrollbar">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + "/");
-              return (
-                <div key={item.href} className="relative px-2 mb-0.5" onMouseEnter={() => setHoveredItem(item.label)} onMouseLeave={() => setHoveredItem(null)}>
-                  <Link
-                    to={item.href}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                      isActive
-                        ? "bg-amber-500/15 text-amber-400"
-                        : "text-white/50 hover:bg-white/5 hover:text-white/80"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5 shrink-0" />
-                    {!sidebarCollapsed && (
-                      <span className="text-sm truncate" style={{ fontWeight: isActive ? 600 : 400 }}>
-                        {item.label}
-                      </span>
-                    )}
-                  </Link>
-                  {sidebarCollapsed && <SidebarTooltip label={item.label} show={hoveredItem === item.label} />}
-                </div>
-              );
-            })}
-          </nav>
-
-          {/* Collapse toggle */}
-          <div className="border-t border-white/10 p-2">
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white/40 hover:bg-white/5 hover:text-white/70 transition-colors"
-            >
-              {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <><ChevronLeft className="w-4 h-4" /><span className="text-xs">Collapse</span></>}
-            </button>
-          </div>
-        </aside>
-
-        {/* SIDEBAR – Mobile drawer */}
-        {mobileDrawerOpen && (
-          <>
-            <div className="fixed inset-0 bg-black/50 z-50 lg:hidden" onClick={() => setMobileDrawerOpen(false)} />
-            <aside className="fixed left-0 top-0 bottom-0 w-[260px] bg-[#0F172A] z-50 lg:hidden flex flex-col shadow-2xl">
-              <div className="flex items-center justify-between px-4 h-16 border-b border-white/10">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center">
-                    <BookOpen className="w-5 h-5 text-amber-400" />
-                  </div>
-                  <span className="text-white text-sm" style={{ fontWeight: 700 }}>RIKMS Admin</span>
-                </div>
-                <button onClick={() => setMobileDrawerOpen(false)} className="p-2 rounded-lg text-white/40 hover:bg-white/10">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <nav className="flex-1 py-3 overflow-y-auto">
-                {NAV_ITEMS.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + "/");
-                  return (
+    const sidebarWidth = sidebarCollapsed ? 72 : 240;
+    const navigation = (mobile = false) => (
+        <nav className="flex-1 overflow-y-auto py-3" aria-label="Administration navigation">
+            {NAV_ITEMS.map(({ icon: Icon, label, href }) => {
+                const active = location.pathname === href || location.pathname.startsWith(`${href}/`);
+                return (
                     <Link
-                      key={item.href}
-                      to={item.href}
-                      onClick={() => setMobileDrawerOpen(false)}
-                      className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-lg transition-colors mb-0.5 ${
-                        isActive
-                          ? "bg-amber-500/15 text-amber-400"
-                          : "text-white/50 hover:bg-white/5 hover:text-white/80"
-                      }`}
+                        key={href}
+                        to={href}
+                        title={sidebarCollapsed && !mobile ? label : undefined}
+                        className={`mx-2 mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${active ? "bg-amber-500/15 font-semibold text-amber-400" : "text-white/55 hover:bg-white/5 hover:text-white/85"}`}
                     >
-                      <Icon className="w-5 h-5 shrink-0" />
-                      <span className="text-sm" style={{ fontWeight: isActive ? 600 : 400 }}>{item.label}</span>
+                        <Icon className="h-5 w-5 shrink-0" />
+                        {(mobile || !sidebarCollapsed) && <span className="truncate">{label}</span>}
                     </Link>
-                  );
-                })}
-              </nav>
-            </aside>
-          </>
-        )}
+                );
+            })}
+        </nav>
+    );
 
-        {/* MAIN CONTENT */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-x-hidden">
-          <Outlet />
-        </main>
-      </div>
-    </div>
-  );
+    if (identityLoading) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-[#F3F4F6]" role="status">
+                <p className="text-sm font-medium text-slate-600">Checking administrator security…</p>
+            </div>
+        );
+    }
+
+    return (
+        <div
+            className="flex min-h-screen flex-col bg-[#F3F4F6]"
+            style={{ fontFamily: "'Inter', sans-serif" }}
+        >
+            <a
+                href="#admin-main-content"
+                className="sr-only z-[200] rounded-lg bg-white px-4 py-2 text-sm font-semibold text-[#1E3A8A] focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+            >
+                Skip to main content
+            </a>
+            <header className="sticky top-0 z-50 flex h-16 items-center border-b border-white/10 bg-[#0F172A] px-4 sm:px-6">
+                <button
+                    type="button"
+                    onClick={() => setMobileDrawerOpen(true)}
+                    className="mr-2 rounded-lg p-2 text-white/60 hover:bg-white/10 lg:hidden"
+                    aria-label="Open navigation"
+                >
+                    <Menu className="h-5 w-5" />
+                </button>
+                <Link to="/admin/dashboard" className="mr-6 flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20">
+                        <BookOpen className="h-5 w-5 text-amber-400" />
+                    </div>
+                    <div className="hidden sm:block">
+                        <span className="block text-sm font-bold leading-tight text-white">RIKMS</span>
+                        <span className="block text-[10px] text-white/40">System Administration</span>
+                    </div>
+                </Link>
+
+                <form onSubmit={submitSearch} className="hidden max-w-md flex-1 md:block" role="search">
+                    <label htmlFor="admin-global-search" className="sr-only">
+                        Search research records
+                    </label>
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                        <input
+                            id="admin-global-search"
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            placeholder="Search research records…"
+                            className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-10 pr-4 text-sm text-white placeholder:text-white/30 focus:border-amber-400/30 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
+                        />
+                    </div>
+                </form>
+
+                <div className="relative ml-auto mr-1">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setNotificationsOpen((open) => !open);
+                            setProfileOpen(false);
+                        }}
+                        className="relative rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white"
+                        aria-label="Open notifications"
+                        aria-expanded={notificationsOpen}
+                    >
+                        <Bell className="h-5 w-5" />
+                        {notifications.some((notification) => !notification.read) && (
+                            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500">
+                                <span className="sr-only">Unread notifications</span>
+                            </span>
+                        )}
+                    </button>
+                    {notificationsOpen && (
+                        <div className="absolute right-0 top-full z-50 mt-2 w-[min(90vw,380px)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+                            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                                <div>
+                                    <p className="text-sm font-bold text-slate-900">Notifications</p>
+                                    <p className="text-xs text-gray-500">
+                                        {notifications.filter((item) => !item.read).length} unread
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => void readAllNotifications()}
+                                    disabled={!notifications.some((item) => !item.read)}
+                                    className="text-xs font-semibold text-[#1E3A8A] hover:underline disabled:text-gray-300 disabled:no-underline"
+                                >
+                                    Mark all read
+                                </button>
+                            </div>
+                            {notificationsError && (
+                                <p
+                                    className="border-b border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700"
+                                    role="alert"
+                                >
+                                    {notificationsError}
+                                </p>
+                            )}
+                            {!notifications.length ? (
+                                <p className="px-4 py-8 text-center text-sm text-gray-500">
+                                    No notifications.
+                                </p>
+                            ) : (
+                                <ul className="max-h-96 divide-y divide-gray-100 overflow-y-auto">
+                                    {notifications.map((notification) => (
+                                        <li key={notification.id}>
+                                            <button
+                                                type="button"
+                                                onClick={() => void readNotification(notification)}
+                                                className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${notification.read ? "bg-white" : "bg-blue-50/60"}`}
+                                            >
+                                                <div className="flex items-start gap-3">
+                                                    <span
+                                                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${notification.read ? "bg-gray-200" : "bg-[#1E3A8A]"}`}
+                                                    />
+                                                    <span className="min-w-0">
+                                                        <span className="block text-sm font-semibold text-slate-800">
+                                                            {notification.title}
+                                                        </span>
+                                                        <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-gray-500">
+                                                            {notification.message}
+                                                        </span>
+                                                        <span className="mt-1 block text-[10px] text-gray-400">
+                                                            {formatDate(notification.createdAt, true)}
+                                                        </span>
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            <Link
+                                to="/admin/activity"
+                                className="block border-t border-gray-100 px-4 py-3 text-center text-xs font-semibold text-[#1E3A8A] hover:bg-gray-50"
+                            >
+                                View activity log
+                            </Link>
+                        </div>
+                    )}
+                </div>
+
+                <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setProfileOpen((open) => !open);
+                            setNotificationsOpen(false);
+                        }}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-white/80 hover:bg-white/10"
+                        aria-expanded={profileOpen}
+                    >
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20">
+                            <User className="h-4 w-4 text-amber-400" />
+                        </div>
+                        <span className="hidden max-w-36 truncate text-sm font-medium sm:block">
+                            {adminName}
+                        </span>
+                        <ChevronDown className="hidden h-3.5 w-3.5 text-white/40 sm:block" />
+                    </button>
+                    {profileOpen && (
+                        <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white py-1.5 shadow-xl">
+                            <div className="border-b border-gray-100 px-4 py-2.5">
+                                <p className="truncate text-sm font-semibold text-slate-800">{adminName}</p>
+                                <p className="text-xs text-gray-500">Super administrator</p>
+                            </div>
+                            <Link
+                                to="/admin/security"
+                                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                                <ShieldAlert className="h-4 w-4 text-gray-400" /> Security status
+                            </Link>
+                            <button
+                                type="button"
+                                onClick={() => void logout()}
+                                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"
+                            >
+                                <LogOut className="h-4 w-4" /> Sign out
+                            </button>
+                            {logoutError && (
+                                <p
+                                    className="border-t border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700"
+                                    role="alert"
+                                >
+                                    {logoutError}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </header>
+
+            <div className="flex flex-1">
+                <aside
+                    className="sticky top-16 hidden h-[calc(100vh-64px)] flex-col overflow-hidden border-r border-white/10 bg-[#0F172A] transition-[width] lg:flex"
+                    style={{ width: sidebarWidth, minWidth: sidebarWidth }}
+                >
+                    {navigation()}
+                    <div className="border-t border-white/10 p-2">
+                        <button
+                            type="button"
+                            onClick={() => setSidebarCollapsed((value) => !value)}
+                            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs text-white/40 hover:bg-white/5 hover:text-white/70"
+                            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        >
+                            {sidebarCollapsed ? (
+                                <ChevronRight className="h-4 w-4" />
+                            ) : (
+                                <>
+                                    <ChevronLeft className="h-4 w-4" /> Collapse
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </aside>
+
+                {mobileDrawerOpen && (
+                    <div className="fixed inset-0 z-[80] lg:hidden">
+                        <button
+                            type="button"
+                            className="absolute inset-0 bg-black/50"
+                            onClick={() => setMobileDrawerOpen(false)}
+                            aria-label="Close navigation"
+                        />
+                        <aside className="relative flex h-full w-[280px] flex-col bg-[#0F172A] shadow-2xl">
+                            <div className="flex h-16 items-center justify-between border-b border-white/10 px-4">
+                                <span className="font-bold text-white">RIKMS Admin</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setMobileDrawerOpen(false)}
+                                    className="rounded-lg p-2 text-white/50 hover:bg-white/10"
+                                    aria-label="Close navigation"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <form onSubmit={submitSearch} className="p-3">
+                                <label className="sr-only" htmlFor="mobile-admin-search">
+                                    Search research
+                                </label>
+                                <input
+                                    id="mobile-admin-search"
+                                    value={search}
+                                    onChange={(event) => setSearch(event.target.value)}
+                                    placeholder="Search research…"
+                                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30"
+                                />
+                            </form>
+                            {navigation(true)}
+                        </aside>
+                    </div>
+                )}
+
+                <main
+                    id="admin-main-content"
+                    className="min-w-0 flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8"
+                    tabIndex={-1}
+                >
+                    <Outlet />
+                </main>
+            </div>
+        </div>
+    );
 }

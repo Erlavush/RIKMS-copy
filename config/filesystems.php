@@ -33,7 +33,9 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Private research files must only leave storage through the
+            // authorization and grant checks in DocumentDownloadService.
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],

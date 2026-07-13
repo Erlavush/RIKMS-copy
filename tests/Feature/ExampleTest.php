@@ -19,7 +19,7 @@ class ExampleTest extends TestCase
     {
         $this->get('/')
             ->assertOk()
-            ->assertSee('RIKMS-copy');
+            ->assertSee('RIKMS');
     }
 
     public function test_agency_admin_can_view_new_spa_routes(): void
@@ -37,12 +37,24 @@ class ExampleTest extends TestCase
         $this->actingAs($user)
             ->get('/agency/dashboard')
             ->assertOk()
-            ->assertSee('test@example.com');
+            ->assertSee('id="root"', false);
+
+        $this->actingAs($user)
+            ->getJson('/api/rikms/me')
+            ->assertOk()
+            ->assertJsonPath('data.email', 'test@example.com');
 
         $this->actingAs($user)
             ->get('/agency/research')
             ->assertOk()
-            ->assertSee('Cybersecurity data science');
+            ->assertDontSee('Cybersecurity data science');
+
+        $this->actingAs($user)
+            ->getJson('/api/rikms/agency/documents?search=Cybersecurity')
+            ->assertOk()
+            ->assertJsonFragment([
+                'title' => 'Cybersecurity data science: an overview from machine learning perspective',
+            ]);
     }
 
     public function test_agency_admin_can_create_document_from_figma_upload_endpoint(): void

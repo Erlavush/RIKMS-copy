@@ -49,7 +49,7 @@ class DocumentReadinessService
     public function completionScore(Document $document): int
     {
         $score = 0;
-        $score += $document->file_path ? 20 : 0;
+        $score += ($document->file_path || ($document->access_mode === 'external_link_only' && $document->external_url)) ? 20 : 0;
         $score += $document->metadata ? 25 : 0;
         $score += $document->sdgTags->count() > 0 ? 20 : 0;
         $score += $document->access_mode ? 15 : 0;
