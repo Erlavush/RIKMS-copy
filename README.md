@@ -58,6 +58,28 @@ php artisan serve
 - Password: `password`
 - Role: `agency_admin`
 
+## Testing & Verification Dashboard
+
+The project includes an interactive verification, testing, and security auditing dashboard. 
+
+### 1. Generate PHPUnit Test Reports
+Before launching the dashboard, run the functional test suite and output the test results to `report.xml`:
+```bash
+php artisan test --log-junit report.xml
+```
+
+### 2. Run the Dashboard
+Execute the visualization script using Python:
+```bash
+python visualize_dashboard.py
+```
+This script will:
+1. Start a local server at `http://localhost:8888` and open it in your default web browser.
+2. Spin up a background thread to run **Larastan** (SAST static analysis) to output `larastan-report.json`.
+3. Perform an automated **OWASP ZAP** quick scan (DAST dynamic analysis) to generate `zap-report.json` if OWASP ZAP is installed locally and the Laravel application is running (e.g., via `php artisan serve` on port 8000 or 8080).
+4. Present a unified dashboard containing your test success rate, static analysis findings, dynamic security warnings, and an overall application health score.
+
 ## Notes
 
 Uploaded research documents are stored on the Laravel local disk under `storage/app/private/research-documents`. AI extraction is mocked in `App\Services\AiMetadataExtractionService`; it does not auto-publish, auto-approve, or bypass review.
+

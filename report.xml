@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuites>
-  <testsuite name="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\phpunit.xml" tests="9" assertions="59" errors="0" failures="0" skipped="0" time="13.656968">
-    <testsuite name="Unit" tests="1" assertions="1" errors="0" failures="0" skipped="0" time="0.418586">
-      <testsuite name="Tests\Unit\ExampleTest" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Unit\ExampleTest.php" tests="1" assertions="1" errors="0" failures="0" skipped="0" time="0.418586">
-        <testcase name="test_that_true_is_true" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Unit\ExampleTest.php" line="12" class="Tests\Unit\ExampleTest" classname="Tests.Unit.ExampleTest" assertions="1" time="0.418586"/>
+  <testsuite name="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\phpunit.xml" tests="9" assertions="59" errors="0" failures="0" skipped="0" time="1.024531">
+    <testsuite name="Unit" tests="1" assertions="1" errors="0" failures="0" skipped="0" time="0.006837">
+      <testsuite name="Tests\Unit\ExampleTest" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Unit\ExampleTest.php" tests="1" assertions="1" errors="0" failures="0" skipped="0" time="0.006837">
+        <testcase name="test_that_true_is_true" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Unit\ExampleTest.php" line="12" class="Tests\Unit\ExampleTest" classname="Tests.Unit.ExampleTest" assertions="1" time="0.006837"/>
       </testsuite>
     </testsuite>
-    <testsuite name="Feature" tests="8" assertions="58" errors="0" failures="0" skipped="0" time="13.238381">
-      <testsuite name="Tests\Feature\DocumentProcessingTest" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" tests="5" assertions="43" errors="0" failures="0" skipped="0" time="10.396825">
-        <testcase name="test_document_processing_pipeline_success" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" line="20" class="Tests\Feature\DocumentProcessingTest" classname="Tests.Feature.DocumentProcessingTest" assertions="10" time="7.153281"/>
-        <testcase name="test_document_processing_pipeline_malware_detection" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" line="60" class="Tests\Feature\DocumentProcessingTest" classname="Tests.Feature.DocumentProcessingTest" assertions="5" time="0.115174"/>
-        <testcase name="test_spa_endpoints_upload_draft_and_analyze" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" line="100" class="Tests\Feature\DocumentProcessingTest" classname="Tests.Feature.DocumentProcessingTest" assertions="10" time="2.872004"/>
-        <testcase name="test_document_approve_reject_and_rerun_ai" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" line="135" class="Tests\Feature\DocumentProcessingTest" classname="Tests.Feature.DocumentProcessingTest" assertions="10" time="0.139801"/>
-        <testcase name="test_spa_visibility_filtering" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" line="179" class="Tests\Feature\DocumentProcessingTest" classname="Tests.Feature.DocumentProcessingTest" assertions="8" time="0.116565"/>
+    <testsuite name="Feature" tests="8" assertions="58" errors="0" failures="0" skipped="0" time="1.017694">
+      <testsuite name="Tests\Feature\DocumentProcessingTest" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" tests="5" assertions="43" errors="0" failures="0" skipped="0" time="0.822174">
+        <testcase name="test_document_processing_pipeline_success" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" line="20" class="Tests\Feature\DocumentProcessingTest" classname="Tests.Feature.DocumentProcessingTest" assertions="10" time="0.570830"/>
+        <testcase name="test_document_processing_pipeline_malware_detection" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" line="60" class="Tests\Feature\DocumentProcessingTest" classname="Tests.Feature.DocumentProcessingTest" assertions="5" time="0.037037"/>
+        <testcase name="test_spa_endpoints_upload_draft_and_analyze" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" line="100" class="Tests\Feature\DocumentProcessingTest" classname="Tests.Feature.DocumentProcessingTest" assertions="10" time="0.110656"/>
+        <testcase name="test_document_approve_reject_and_rerun_ai" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" line="135" class="Tests\Feature\DocumentProcessingTest" classname="Tests.Feature.DocumentProcessingTest" assertions="10" time="0.045682"/>
+        <testcase name="test_spa_visibility_filtering" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\DocumentProcessingTest.php" line="179" class="Tests\Feature\DocumentProcessingTest" classname="Tests.Feature.DocumentProcessingTest" assertions="8" time="0.057970"/>
       </testsuite>
-      <testsuite name="Tests\Feature\ExampleTest" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\ExampleTest.php" tests="3" assertions="15" errors="0" failures="0" skipped="0" time="2.841556">
-        <testcase name="test_guest_can_view_public_homepage" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\ExampleTest.php" line="18" class="Tests\Feature\ExampleTest" classname="Tests.Feature.ExampleTest" assertions="2" time="1.112536"/>
-        <testcase name="test_agency_admin_can_view_new_spa_routes" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\ExampleTest.php" line="25" class="Tests\Feature\ExampleTest" classname="Tests.Feature.ExampleTest" assertions="8" time="0.127204"/>
-        <testcase name="test_agency_admin_can_create_document_from_figma_upload_endpoint" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\ExampleTest.php" line="48" class="Tests\Feature\ExampleTest" classname="Tests.Feature.ExampleTest" assertions="5" time="1.601816"/>
+      <testsuite name="Tests\Feature\ExampleTest" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\ExampleTest.php" tests="3" assertions="15" errors="0" failures="0" skipped="0" time="0.195520">
+        <testcase name="test_guest_can_view_public_homepage" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\ExampleTest.php" line="18" class="Tests\Feature\ExampleTest" classname="Tests.Feature.ExampleTest" assertions="2" time="0.056550"/>
+        <testcase name="test_agency_admin_can_view_new_spa_routes" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\ExampleTest.php" line="25" class="Tests\Feature\ExampleTest" classname="Tests.Feature.ExampleTest" assertions="8" time="0.064553"/>
+        <testcase name="test_agency_admin_can_create_document_from_figma_upload_endpoint" file="C:\Users\Alpha Palconit\Desktop\SCHOOL LOGS\Project\RIKMS-copy\tests\Feature\ExampleTest.php" line="48" class="Tests\Feature\ExampleTest" classname="Tests.Feature.ExampleTest" assertions="5" time="0.074418"/>
       </testsuite>
     </testsuite>
   </testsuite>
