@@ -1,141 +1,133 @@
-import { Search, BookOpen, Menu, X } from "lucide-react";
-import { Link, useNavigate, useLocation } from "react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { BookOpen, Menu, Search, X } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router";
+import { useBootstrap } from "../hooks/useBootstrap";
+
+const NAV_LINKS = [
+    { to: "/browse", label: "Browse Research" },
+    { to: "/agencies", label: "Agencies" },
+    { to: "/about", label: "About" },
+] as const;
 
 export function Navbar() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const navigate = useNavigate();
+    const location = useLocation();
+    const bootstrap = useBootstrap();
+    const [search, setSearch] = useState("");
+    const [mobileOpen, setMobileOpen] = useState(false);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/browse?q=${encodeURIComponent(searchQuery.trim())}`);
-      setMobileMenuOpen(false);
+    useEffect(() => setMobileOpen(false), [location.pathname, location.search]);
+
+    function submitSearch(event: React.FormEvent) {
+        event.preventDefault();
+        const value = search.trim();
+        navigate(value ? `/browse?search=${encodeURIComponent(value)}` : "/browse");
     }
-  };
 
-  const navLinks = [
-    { to: "/browse", label: "Browse Research", active: location.pathname === "/browse" },
-    { to: "/agencies", label: "Agencies", active: location.pathname.startsWith("/agencies") },
-    { to: "/about", label: "About", active: location.pathname === "/about" },
-  ];
+    const user = bootstrap.data?.currentUser;
+    const portalUrl = user?.role === "super_admin" ? "/admin/dashboard" : "/agency/dashboard";
 
-  return (
-    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 flex items-center justify-between h-16 gap-4">
-        {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 shrink-0">
-          <div className="w-8 h-8 bg-[#1E3A8A] rounded-lg flex items-center justify-center">
-            <BookOpen className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-[#1E3A8A] tracking-tight hidden sm:block" style={{ fontSize: "1.1rem", fontWeight: 700 }}>
-            RIKMS
-          </span>
-        </Link>
-
-        {/* Search Bar - Desktop */}
-        <form onSubmit={handleSearch} className="hidden md:block flex-1 max-w-md">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search research, keywords, agencies, or SDGs"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-[#F9FAFB] border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/20 focus:border-[#1E3A8A] transition-colors"
-            />
-          </div>
-        </form>
-
-        {/* Navigation Links - Desktop */}
-        <div className="hidden md:flex items-center gap-1">
-          {navLinks.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className={`px-3 py-2 text-sm rounded-md transition-colors ${
-                link.active
-                  ? "text-[#1E3A8A] bg-blue-50"
-                  : "text-[#6B7280] hover:text-[#1E3A8A] hover:bg-blue-50"
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
-          <Link
-            to="/login"
-            className={`ml-2 px-4 py-2 text-sm rounded-lg transition-colors ${
-              location.pathname === "/login"
-                ? "bg-[#1E3A8A] text-white ring-2 ring-[#1E3A8A]/30"
-                : "bg-[#1E3A8A] text-white hover:bg-[#1E3A8A]/90"
-            }`}
-          >
-            Login
-          </Link>
-        </div>
-
-        {/* Mobile: Search icon + Hamburger */}
-        <div className="flex items-center gap-2 md:hidden">
-          <Link
-            to="/login"
-            className="px-3 py-1.5 text-sm bg-[#1E3A8A] text-white rounded-lg"
-          >
-            Login
-          </Link>
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            {mobileMenuOpen ? (
-              <X className="w-5 h-5 text-gray-600" />
-            ) : (
-              <Menu className="w-5 h-5 text-gray-600" />
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Mobile Menu Drawer */}
-      {mobileMenuOpen && (
-        <div className="md:hidden border-t border-gray-100 bg-white shadow-lg">
-          <div className="px-4 py-3">
-            {/* Mobile Search */}
-            <form onSubmit={handleSearch} className="mb-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search research..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#F9FAFB] border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/20 focus:border-[#1E3A8A]"
-                />
-              </div>
-            </form>
-
-            {/* Mobile Nav Links */}
-            <div className="space-y-1">
-              {navLinks.map((link) => (
+    return (
+        <nav
+            className="sticky top-0 z-50 border-b border-gray-200 bg-white shadow-sm"
+            aria-label="Main navigation"
+        >
+            <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between gap-4 px-4 sm:px-6">
                 <Link
-                  key={link.to}
-                  to={link.to}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-3 py-2.5 text-sm rounded-lg transition-colors ${
-                    link.active
-                      ? "text-[#1E3A8A] bg-blue-50"
-                      : "text-[#6B7280] hover:text-[#1E3A8A] hover:bg-gray-50"
-                  }`}
-                  style={{ fontWeight: link.active ? 600 : 400 }}
+                    to="/"
+                    className="flex shrink-0 items-center gap-2 font-bold tracking-tight text-[#1E3A8A]"
                 >
-                  {link.label}
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1E3A8A]">
+                        <BookOpen className="h-5 w-5 text-white" />
+                    </span>
+                    <span className="hidden max-w-40 truncate sm:block">
+                        {bootstrap.data?.platform?.siteName ?? "RIKMS"}
+                    </span>
                 </Link>
-              ))}
+                <form onSubmit={submitSearch} className="hidden max-w-md flex-1 md:block" role="search">
+                    <label className="relative block">
+                        <span className="sr-only">Search published research</span>
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                        <input
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            placeholder="Search published research by title or keyword"
+                            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-10 pr-4 text-sm focus:border-[#1E3A8A] focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        />
+                    </label>
+                </form>
+                <div className="hidden items-center gap-1 md:flex">
+                    {NAV_LINKS.map((link) => {
+                        const active =
+                            location.pathname === link.to ||
+                            (link.to === "/agencies" && location.pathname.startsWith("/agencies/"));
+                        return (
+                            <Link
+                                key={link.to}
+                                to={link.to}
+                                aria-current={active ? "page" : undefined}
+                                className={`rounded-md px-3 py-2 text-sm ${active ? "bg-blue-50 font-medium text-[#1E3A8A]" : "text-gray-600 hover:bg-blue-50 hover:text-[#1E3A8A]"}`}
+                            >
+                                {link.label}
+                            </Link>
+                        );
+                    })}
+                    <Link
+                        to={user ? portalUrl : "/login"}
+                        className="ml-2 rounded-lg bg-[#1E3A8A] px-4 py-2 text-sm font-medium text-white hover:bg-blue-900"
+                    >
+                        {user ? "Dashboard" : "Agency login"}
+                    </Link>
+                </div>
+                <div className="flex items-center gap-2 md:hidden">
+                    <Link
+                        to={user ? portalUrl : "/login"}
+                        className="rounded-lg bg-[#1E3A8A] px-3 py-1.5 text-sm font-medium text-white"
+                    >
+                        {user ? "Dashboard" : "Login"}
+                    </Link>
+                    <button
+                        type="button"
+                        onClick={() => setMobileOpen((open) => !open)}
+                        aria-expanded={mobileOpen}
+                        aria-controls="mobile-navigation"
+                        aria-label="Toggle navigation menu"
+                        className="rounded-lg p-2 hover:bg-gray-100"
+                    >
+                        {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                    </button>
+                </div>
             </div>
-          </div>
-        </div>
-      )}
-    </nav>
-  );
+            {mobileOpen && (
+                <div
+                    id="mobile-navigation"
+                    className="border-t border-gray-100 bg-white px-4 py-3 shadow-lg md:hidden"
+                >
+                    <form onSubmit={submitSearch} role="search">
+                        <label className="relative block">
+                            <span className="sr-only">Search published research</span>
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                            <input
+                                value={search}
+                                onChange={(event) => setSearch(event.target.value)}
+                                placeholder="Search research…"
+                                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm"
+                            />
+                        </label>
+                    </form>
+                    <div className="mt-3 space-y-1">
+                        {NAV_LINKS.map((link) => (
+                            <Link
+                                key={link.to}
+                                to={link.to}
+                                className="block rounded-lg px-3 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-[#1E3A8A]"
+                            >
+                                {link.label}
+                            </Link>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </nav>
+    );
 }

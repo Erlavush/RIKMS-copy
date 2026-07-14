@@ -9,22 +9,22 @@ class DocumentPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->role === 'agency_admin';
+        return $user->is_active && in_array($user->role, ['agency_admin', 'super_admin'], true);
     }
 
     public function view(User $user, Document $document): bool
     {
-        return $this->sameAgency($user, $document) || $document->uploaded_by === $user->id;
+        return $user->isSuperAdmin() || $this->sameAgency($user, $document);
     }
 
     public function create(User $user): bool
     {
-        return $user->role === 'agency_admin' && $user->agency_id !== null;
+        return $user->is_active && $user->isAgencyAdmin();
     }
 
     public function update(User $user, Document $document): bool
     {
-        return $this->sameAgency($user, $document) || $document->uploaded_by === $user->id;
+        return $user->isSuperAdmin() || $this->sameAgency($user, $document);
     }
 
     public function delete(User $user, Document $document): bool

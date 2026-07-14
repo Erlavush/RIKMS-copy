@@ -3,7 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
+/** @property Carbon|null $financial_as_of_date */
 class ReportFinancial extends Model
 {
     protected $fillable = [
@@ -22,7 +25,7 @@ class ReportFinancial extends Model
         return ['financial_as_of_date' => 'date'];
     }
 
-    public function document()
+    public function document(): BelongsTo
     {
         return $this->belongsTo(Document::class);
     }

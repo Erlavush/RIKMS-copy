@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ReportPerformanceRow extends Model
 {
@@ -15,7 +16,7 @@ class ReportPerformanceRow extends Model
         'status',
     ];
 
-    public function document()
+    public function document(): BelongsTo
     {
         return $this->belongsTo(Document::class);
     }

@@ -2,8 +2,65 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property int $agency_id
+ * @property int $uploaded_by
+ * @property string $document_type
+ * @property string|null $title
+ * @property string|null $description
+ * @property string|null $file_path
+ * @property string|null $original_filename
+ * @property string|null $mime_type
+ * @property int|null $file_size
+ * @property string $status
+ * @property int|null $year
+ * @property string|null $reporting_quarter
+ * @property string|null $category
+ * @property string $access_mode
+ * @property Carbon|null $embargo_until
+ * @property string|null $external_url
+ * @property string|null $owner_name
+ * @property string|null $owner_email
+ * @property bool $notify_access_requests
+ * @property bool $notify_research_inquiries
+ * @property bool $send_copy_to_agency_admin
+ * @property bool $is_ai_tagged
+ * @property int $completion_score
+ * @property int $digital_library_score
+ * @property int $download_count
+ * @property Carbon|null $submitted_at
+ * @property Carbon|null $published_at
+ * @property int|null $reviewed_by
+ * @property Carbon|null $reviewed_at
+ * @property string|null $rejection_reason
+ * @property string|null $pre_archive_status
+ * @property Carbon|null $archived_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
+ * @property-read Agency $agency
+ * @property-read User $uploader
+ * @property-read User|null $reviewer
+ * @property-read DocumentMetadata|null $metadata
+ * @property-read ReportFinancial|null $financial
+ * @property-read Collection<int, PublicMetadataField> $publicFields
+ * @property-read Collection<int, SdgTag> $sdgTags
+ * @property-read Collection<int, AccessRequest> $accessRequests
+ * @property-read Collection<int, ReportPerformanceRow> $performanceRows
+ * @property-read Collection<int, PapClassification> $papClassifications
+ * @property-read Collection<int, Highlight> $highlights
+ * @property-read Collection<int, DocumentVersion> $versions
+ * @property-read Collection<int, DownloadGrant> $downloadGrants
+ * @property-read Collection<int, DownloadEvent> $downloadEvents
+ */
 class Document extends Model
 {
     public const RESEARCH_STUDY = 'research_study';
@@ -24,6 +81,7 @@ class Document extends Model
         'file_size',
         'status',
         'year',
+        'reporting_quarter',
         'category',
         'access_mode',
         'embargo_until',
@@ -36,8 +94,14 @@ class Document extends Model
         'is_ai_tagged',
         'completion_score',
         'digital_library_score',
+        'download_count',
         'submitted_at',
         'published_at',
+        'reviewed_by',
+        'reviewed_at',
+        'rejection_reason',
+        'pre_archive_status',
+        'archived_at',
         'hash',
         'malware_status',
         'integrity_status',
@@ -56,62 +120,94 @@ class Document extends Model
             'is_ai_tagged' => 'boolean',
             'submitted_at' => 'datetime',
             'published_at' => 'datetime',
+            'reviewed_at' => 'datetime',
+            'archived_at' => 'datetime',
         ];
     }
 
-    public function agency()
+    public function agency(): BelongsTo
     {
         return $this->belongsTo(Agency::class);
     }
 
-    public function uploader()
+    public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
     }
 
-    public function metadata()
+    public function metadata(): HasOne
     {
         return $this->hasOne(DocumentMetadata::class);
     }
 
-    public function publicFields()
+    public function aiAnalyses(): HasMany
+    {
+        return $this->hasMany(DocumentAiAnalysis::class);
+    }
+
+    public function latestAiAnalysis(): HasOne
+    {
+        return $this->hasOne(DocumentAiAnalysis::class)->latestOfMany();
+    }
+
+    public function publicFields(): HasMany
     {
         return $this->hasMany(PublicMetadataField::class);
     }
 
-    public function sdgTags()
+    public function sdgTags(): BelongsToMany
     {
         return $this->belongsToMany(SdgTag::class, 'document_sdg')->withPivot(['source', 'confidence'])->withTimestamps();
     }
 
-    public function accessRequests()
+    public function accessRequests(): HasMany
     {
         return $this->hasMany(AccessRequest::class);
     }
 
-    public function performanceRows()
+    public function performanceRows(): HasMany
     {
         return $this->hasMany(ReportPerformanceRow::class);
     }
 
-    public function financial()
+    public function financial(): HasOne
     {
         return $this->hasOne(ReportFinancial::class);
     }
 
-    public function papClassifications()
+    public function papClassifications(): HasMany
     {
         return $this->hasMany(PapClassification::class);
     }
 
-    public function highlights()
+    public function highlights(): HasMany
     {
         return $this->hasMany(Highlight::class);
     }
 
-    public function chunks()
+    public function chunks(): HasMany
     {
         return $this->hasMany(DocumentChunk::class);
+    }
+
+    public function versions(): HasMany
+    {
+        return $this->hasMany(DocumentVersion::class);
+    }
+
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function downloadGrants(): HasMany
+    {
+        return $this->hasMany(DownloadGrant::class);
+    }
+
+    public function downloadEvents(): HasMany
+    {
+        return $this->hasMany(DownloadEvent::class);
     }
 
     public function isResearchStudy(): bool

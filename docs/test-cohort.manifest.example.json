@@ -1,0 +1,20 @@
+{
+    "admin": {
+        "name": "Team B Leader",
+        "email": "leader@example.com"
+    },
+    "testers": [
+        { "name": "Tester 1", "email": "tester1@example.com", "previous_email": "mistyped-tester1@example.com", "company": "Test Company 1", "company_abbreviation": "TC1" },
+        { "name": "Tester 2", "email": "tester2@example.com", "company": "Test Company 2", "company_abbreviation": "TC2" },
+        { "name": "Tester 3", "email": "tester3@example.com", "company": "Test Company 3", "company_abbreviation": "TC3" },
+        { "name": "Tester 4", "email": "tester4@example.com", "company": "Test Company 4", "company_abbreviation": "TC4" },
+        { "name": "Tester 5", "email": "tester5@example.com", "company": "Test Company 5", "company_abbreviation": "TC5" },
+        { "name": "Tester 6", "email": "tester6@example.com", "company": "Test Company 6", "company_abbreviation": "TC6" },
+        { "name": "Tester 7", "email": "tester7@example.com", "company": "Test Company 7", "company_abbreviation": "TC7" },
+        { "name": "Tester 8", "email": "tester8@example.com", "company": "Test Company 8", "company_abbreviation": "TC8" },
+        { "name": "Tester 9", "email": "tester9@example.com", "company": "Test Company 9", "company_abbreviation": "TC9" },
+        { "name": "Tester 10", "email": "tester10@example.com", "company": "Test Company 10", "company_abbreviation": "TC10" },
+        { "name": "Tester 11", "email": "tester11@example.com", "company": "Test Company 11", "company_abbreviation": "TC11" },
+        { "name": "Tester 12", "email": "tester12@example.com", "company": "Test Company 12", "company_abbreviation": "TC12" }
+    ]
+}

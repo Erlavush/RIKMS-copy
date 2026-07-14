@@ -1,1175 +1,351 @@
-import { useState, useMemo } from "react";
-import { Link, useNavigate } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
+import { Archive, Download, Eye, History, LockKeyhole, Pencil, Plus, Search, Send } from "lucide-react";
+import { toast } from "sonner";
+import { useApi } from "../../hooks/useApi";
+import { useAgencyContext } from "../../hooks/useAgencyContext";
 import {
-  Search, Eye, Pencil, Download, Plus, LayoutGrid, List,
-  ShieldCheck, FileText, X, Lock, Globe, Clock, KeyRound,
-  ChevronRight, Home, SlidersHorizontal, ChevronDown,
-  BarChart3, Users, Tag, Sparkles, TrendingUp, ArrowUpDown,
-  CheckCircle2, Filter, Layers, Grid3X3, RefreshCw,
-  BookOpen, ClipboardList, FileBarChart, Star,
-} from "lucide-react";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
-} from "recharts";
-import { SDG_DATA, SDG_RESEARCH_COUNTS, RESEARCH_DATA } from "../../data/mock-data";
+    apiDelete,
+    apiPost,
+    firstValidationError,
+    type Paginated,
+    type ResearchDocument,
+    queryString,
+} from "../../lib/api";
+import { formatBytes, formatDate, formatDocumentType } from "../../lib/format";
+import { hasPermission } from "../../lib/permissions";
+import { EmptyState, ErrorState, LoadingState } from "../shared/AsyncState";
+import { StatusBadge } from "../shared/StatusBadge";
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
-
-type ResearchStatus = "Published" | "Draft" | "Archived";
-type AccessPolicy   = "Public" | "Restricted" | "Request Access" | "Embargoed";
-type DocType        = "Research Study" | "Terminal Report" | "Project Report";
-type SortOption     = "newest" | "oldest" | "most-downloaded" | "most-relevant";
-type ViewMode       = "grid" | "table";
-type SDGViewMode    = "by-category" | "all";
-
-interface ResearchItem {
-  id: number;
-  title: string;
-  authors: string[];
-  year: number;
-  quarter?: string;
-  agency: string;
-  agencyAbbr: string;
-  category: string;
-  docType: DocType;
-  sdgs: number[];
-  accessPolicy: AccessPolicy;
-  status: ResearchStatus;
-  lastUpdated: string;
-  downloads: number;
-  abstract?: string;
-  papCategory?: string;
-  completion?: number;
-  budgetUtil?: number;
-  featured?: boolean;
-  aiTagged?: boolean;
-}
-
-// ─── SDG Category Grouping ────────────────────────────────────────────────────
-
-const SDG_CATEGORIES = [
-  {
-    id: "social",
-    label: "Social",
-    icon: Users,
-    color: "#E5243B",
-    description: "People-centered goals addressing poverty, health, education, and equality",
-    sdgs: [1, 2, 3, 4, 5],
-    bg: "#FFF1F2",
-    border: "#FECDD3",
-  },
-  {
-    id: "economic",
-    label: "Economic",
-    icon: TrendingUp,
-    color: "#A21942",
-    description: "Goals driving prosperity, innovation, infrastructure, and reduced inequality",
-    sdgs: [8, 9, 10],
-    bg: "#FFF1F6",
-    border: "#FBCFE8",
-  },
-  {
-    id: "environmental",
-    label: "Environmental",
-    icon: Globe,
-    color: "#3F7E44",
-    description: "Goals protecting the planet — water, energy, cities, climate, and oceans",
-    sdgs: [6, 7, 11, 12, 13, 14, 15],
-    bg: "#F0FDF4",
-    border: "#BBF7D0",
-  },
-  {
-    id: "governance",
-    label: "Governance",
-    icon: ShieldCheck,
-    color: "#00689D",
-    description: "Goals for peace, justice, strong institutions, and global partnerships",
-    sdgs: [16, 17],
-    bg: "#F0F9FF",
-    border: "#BAE6FD",
-  },
-] as const;
-
-// ─── Mock Research Data ────────────────────────────────────────────────────────
-
-const mapAccessPolicy = (mode: string | undefined): AccessPolicy => {
-  if (!mode) return "Public";
-  const m = mode.toLowerCase();
-  if (m.includes("public")) return "Public";
-  if (m.includes("request")) return "Request Access";
-  if (m.includes("restricted")) return "Restricted";
-  if (m.includes("embargo")) return "Embargoed";
-  return "Public";
-};
-
-const mapDocType = (type: string | undefined, category: string | undefined): DocType => {
-  if (!type) {
-    if (category === "Terminal Report") return "Terminal Report";
-    if (category === "Project Report") return "Project Report";
-    return "Research Study";
-  }
-  const t = type.toLowerCase();
-  if (t === "research_study" || t === "research study") return "Research Study";
-  if (t === "terminal_report" || t === "terminal report") return "Terminal Report";
-  if (t === "project_accomplishment_report" || t === "project report" || t === "project accomplishment report" || t === "pap") return "Project Report";
-  return "Research Study";
-};
-
-const mapStatus = (status: string | undefined): ResearchStatus => {
-  if (!status) return "Published";
-  const s = status.toLowerCase();
-  if (s === "published") return "Published";
-  if (s === "draft" || s === "pending") return "Draft";
-  if (s === "archived" || s === "rejected") return "Archived";
-  return "Published";
-};
-
-const RESEARCH_ITEMS: ResearchItem[] = RESEARCH_DATA.map((item: any) => {
-  return {
-    id: item.id,
-    title: item.title || "Untitled Document",
-    authors: Array.isArray(item.authors) ? item.authors : [item.authors || "Unknown Author"],
-    year: item.year || new Date().getFullYear(),
-    quarter: item.quarter,
-    agency: item.agency || "Unassigned Agency",
-    agencyAbbr: item.agencyAbbr || "N/A",
-    category: item.category || "General",
-    docType: mapDocType(item.docType || item.document_type, item.category),
-    sdgs: Array.isArray(item.sdgs) ? item.sdgs : [],
-    accessPolicy: mapAccessPolicy(item.accessPolicy || item.accessMode || item.access_mode),
-    status: mapStatus(item.status),
-    lastUpdated: item.lastUpdated || item.updated_at || new Date().toISOString().split('T')[0],
-    downloads: item.downloads || 0,
-    abstract: item.abstract || item.description,
-    papCategory: item.papCategory || item.pap_category,
-    completion: item.completion || item.completionScore,
-    budgetUtil: item.budgetUtil,
-    featured: !!item.featured,
-    aiTagged: !!item.isAiTagged || !!item.aiTagged,
-  };
-});
-
-const AGENCIES_LIST   = [...new Set(RESEARCH_ITEMS.map(r => r.agencyAbbr))].sort();
-const YEARS_LIST      = [...new Set(RESEARCH_ITEMS.map(r => String(r.year)))].sort((a, b) => +b - +a);
-const QUARTERS_LIST   = ["Q1", "Q2", "Q3", "Q4"];
-const PAP_CATS        = ["Circular Economy", "Digital Economy", "STI Strategy", "GAD", "Youth"];
-const ACCESS_POLICIES = ["Public", "Restricted", "Request Access", "Embargoed"] as const;
-const DOC_TYPE_LIST   = ["Research Study", "Terminal Report", "Project Report"] as const;
-
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: "newest",          label: "Most Recent" },
-  { value: "most-downloaded", label: "Most Downloaded" },
-  { value: "oldest",          label: "Oldest First" },
-  { value: "most-relevant",   label: "Most Relevant" },
-];
-
-// ─── Small helpers ─────────────────────────────────────────────────────────────
-
-function fmtAuthors(authors: string[]) {
-  if (authors.length === 0) return "";
-  if (authors.length === 1) return authors[0];
-  const parts = authors[0].split(" ");
-  return `${parts[parts.length - 1]} et al.`;
-}
-
-function docTypeColor(dt: DocType) {
-  if (dt === "Research Study")   return { bg: "#EFF6FF", color: "#1E3A8A", Icon: BookOpen };
-  if (dt === "Terminal Report")  return { bg: "#F5F3FF", color: "#7C3AED", Icon: ClipboardList };
-  return                                { bg: "#ECFDF5", color: "#059669", Icon: FileBarChart };
-}
-
-// ─── Sub-components ────────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: ResearchStatus }) {
-  const s: Record<ResearchStatus, string> = {
-    Published: "bg-green-50 text-green-700 border-green-200",
-    Draft:     "bg-amber-50 text-amber-700 border-amber-200",
-    Archived:  "bg-gray-100 text-gray-500 border-gray-200",
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] border font-semibold ${s[status]}`}>
-      {status}
-    </span>
-  );
-}
-
-function AccessBadge({ policy }: { policy: AccessPolicy }) {
-  const cfg: Record<AccessPolicy, { style: string; Icon: React.ElementType }> = {
-    Public:          { style: "bg-blue-50 text-blue-700 border-blue-200",     Icon: Globe     },
-    Restricted:      { style: "bg-red-50 text-red-600 border-red-200",        Icon: Lock      },
-    "Request Access":{ style: "bg-purple-50 text-purple-700 border-purple-200", Icon: KeyRound },
-    Embargoed:       { style: "bg-orange-50 text-orange-700 border-orange-200",Icon: Clock    },
-  };
-  const { style, Icon } = cfg[policy];
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border font-semibold ${style}`}>
-      <Icon className="w-2.5 h-2.5" />{policy}
-    </span>
-  );
-}
-
-function SdgChip({ number, size = "sm" }: { number: number; size?: "sm" | "xs" }) {
-  const sdg = SDG_DATA.find(s => s.number === number);
-  if (!sdg) return null;
-  const cls = size === "xs"
-    ? "px-1.5 py-0.5 text-[9px]"
-    : "px-2 py-0.5 text-[10px]";
-  return (
-    <span className={`inline-flex items-center rounded font-bold text-white ${cls}`} style={{ background: sdg.color }}>
-      SDG {sdg.number}
-    </span>
-  );
-}
-
-// ─── SDG Card ─────────────────────────────────────────────────────────────────
-
-function SdgCard({
-  sdg, count, selected, onClick, onHover, hovered,
-}: {
-  sdg: typeof SDG_DATA[number];
-  count: number;
-  selected: boolean;
-  onClick: () => void;
-  onHover: (n: number | null) => void;
-  hovered: number | null;
-}) {
-  const isHov = hovered === sdg.number;
-  return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => onHover(sdg.number)}
-      onMouseLeave={() => onHover(null)}
-      className={`relative w-full rounded-2xl p-3.5 text-left transition-all duration-200 border-2 ${
-        selected
-          ? "border-white shadow-xl ring-2 ring-offset-2"
-          : "border-transparent hover:shadow-lg hover:scale-[1.03]"
-      }`}
-      style={{
-        background:  selected ? sdg.color : isHov ? sdg.color : sdg.color + "CC",
-        ringColor:   selected ? sdg.color : undefined,
-      }}
-    >
-      {selected && (
-        <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center shadow">
-          <CheckCircle2 className="w-3.5 h-3.5" style={{ color: sdg.color }} />
-        </div>
-      )}
-      <div className="text-white/70 text-[9px] font-bold mb-0.5">SDG</div>
-      <div className="text-white font-black mb-1" style={{ fontSize: "1.75rem", lineHeight: 1 }}>
-        {sdg.number}
-      </div>
-      <p className="text-white font-semibold leading-tight mb-2" style={{ fontSize: "0.67rem" }}>
-        {sdg.title}
-      </p>
-      <div className="flex items-center gap-1">
-        <span className="text-white/80 text-[10px] font-semibold">{count.toLocaleString()}</span>
-        <span className="text-white/60 text-[9px]">studies</span>
-      </div>
-      {/* Tooltip on hover */}
-      {isHov && !selected && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none w-44">
-          <div className="bg-gray-900 text-white text-[10px] px-3 py-2 rounded-xl shadow-xl text-center">
-            <p className="font-bold">{sdg.title}</p>
-            <p className="text-gray-400 mt-0.5">{count} documents tagged</p>
-          </div>
-          <div className="w-2 h-2 bg-gray-900 rotate-45 mx-auto -mt-1" />
-        </div>
-      )}
-    </button>
-  );
-}
-
-// ─── Document Card (Grid) ─────────────────────────────────────────────────────
-
-function DocCard({ item, onEdit, onManageAccess }: {
-  item: ResearchItem;
-  onEdit: () => void;
-  onManageAccess: () => void;
-}) {
-  const { bg, color, Icon } = docTypeColor(item.docType);
-  const isRestricted = item.accessPolicy === "Restricted" || item.accessPolicy === "Embargoed";
-
-  return (
-    <div className={`bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col group ${
-      isRestricted ? "border-red-100" : "border-gray-200"
-    }`}>
-      {/* Top accent bar */}
-      <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${item.sdgs.map(n => SDG_DATA.find(s => s.number === n)?.color).filter(Boolean).join(", ")})` }} />
-
-      <div className="p-5 flex flex-col flex-1">
-        {/* Header badges */}
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold" style={{ background: bg, color }}>
-              <Icon className="w-3 h-3" />
-              {item.docType}
-            </span>
-            {item.quarter && (
-              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-semibold rounded-lg">
-                {item.quarter} {item.year}
-              </span>
-            )}
-            {item.featured && (
-              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-amber-50 text-amber-600 text-[10px] font-bold rounded-lg border border-amber-200">
-                <Star className="w-2.5 h-2.5" /> Featured
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <StatusBadge status={item.status} />
-          </div>
-        </div>
-
-        {/* Title */}
-        <h3 className="text-gray-900 font-semibold leading-snug mb-1.5 group-hover:text-[#1E3A8A] transition-colors" style={{ fontSize: "0.88rem" }}>
-          {isRestricted && <Lock className="w-3.5 h-3.5 inline mr-1 text-red-400" />}
-          {item.title}
-        </h3>
-
-        {/* Authors */}
-        <p className="text-xs text-gray-400 font-medium mb-1">{fmtAuthors(item.authors)}</p>
-
-        {/* Agency */}
-        <p className="text-[10px] text-gray-400 mb-3 truncate">{item.agencyAbbr}</p>
-
-        {/* Abstract or restricted overlay */}
-        {isRestricted ? (
-          <div className="flex-1 flex items-center justify-center flex-col gap-2 py-4 bg-red-50/60 rounded-xl border border-dashed border-red-200 mb-3">
-            <Lock className="w-6 h-6 text-red-300" />
-            <p className="text-xs text-red-400 font-medium">Access Restricted</p>
-            <button className="text-[10px] text-red-600 bg-red-100 px-3 py-1 rounded-full font-semibold hover:bg-red-200 transition-colors">
-              Request Access
-            </button>
-          </div>
-        ) : item.abstract ? (
-          <p className="text-xs text-gray-500 leading-relaxed mb-3 flex-1 line-clamp-3">{item.abstract}</p>
-        ) : (
-          <div className="flex-1" />
-        )}
-
-        {/* Performance bars (Terminal/Project Reports) */}
-        {(item.docType === "Terminal Report" || item.docType === "Project Report") && item.completion !== undefined && (
-          <div className="space-y-1.5 mb-3 p-3 bg-gray-50 rounded-xl">
-            {item.papCategory && (
-              <div className="flex items-center gap-1.5 mb-2">
-                <Tag className="w-3 h-3 text-[#1E3A8A]" />
-                <span className="text-[10px] text-[#1E3A8A] font-semibold">{item.papCategory}</span>
-              </div>
-            )}
-            <div>
-              <div className="flex justify-between text-[10px] text-gray-500 mb-1 font-medium">
-                <span>Completion</span><span className="font-bold">{item.completion}%</span>
-              </div>
-              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${item.completion}%` }} />
-              </div>
-            </div>
-            {item.budgetUtil !== undefined && (
-              <div>
-                <div className="flex justify-between text-[10px] text-gray-500 mb-1 font-medium">
-                  <span>Budget Utilized</span><span className="font-bold">{item.budgetUtil}%</span>
-                </div>
-                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${item.budgetUtil > 90 ? "bg-red-500" : "bg-[#1E3A8A]"}`}
-                    style={{ width: `${item.budgetUtil}%` }} />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* SDG Tags */}
-        {item.sdgs.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-3">
-            {item.sdgs.map(n => <SdgChip key={`card-sdg-${item.id}-${n}`} number={n} size="xs" />)}
-            {item.aiTagged && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[9px] font-semibold rounded border border-purple-100">
-                <Sparkles className="w-2 h-2" /> AI Tagged
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="flex items-center justify-between pt-3 border-t border-gray-100 mt-auto">
-          <div className="flex items-center gap-2">
-            <AccessBadge policy={item.accessPolicy} />
-            {item.downloads > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-gray-400">
-                <Download className="w-3 h-3" />{item.downloads.toLocaleString()}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            <button onClick={onEdit}
-              className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-[#1E3A8A] transition-colors" title="Edit">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={onManageAccess}
-              className="p-1.5 rounded-lg hover:bg-purple-50 text-gray-400 hover:text-purple-600 transition-colors" title="Access Control">
-              <ShieldCheck className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Document Table Row ────────────────────────────────────────────────────────
-
-function DocTableRow({ item, selected, onToggle, onEdit, onManageAccess }: {
-  item: ResearchItem; selected: boolean;
-  onToggle: () => void; onEdit: () => void; onManageAccess: () => void;
-}) {
-  const { color, Icon } = docTypeColor(item.docType);
-  return (
-    <tr className={`border-b border-gray-100 hover:bg-[#F8FAFF] transition-colors ${selected ? "bg-blue-50/30" : ""}`}>
-      <td className="px-4 py-3 text-center">
-        <input type="checkbox" checked={selected} onChange={onToggle} className="rounded border-gray-300" />
-      </td>
-      <td className="px-4 py-3 min-w-[300px]">
-        <div className="flex items-start gap-2">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5" style={{ background: color + "18" }}>
-            <Icon className="w-3.5 h-3.5" style={{ color }} />
-          </div>
-          <div>
-            <p className="text-sm text-gray-800 font-medium leading-snug hover:text-[#1E3A8A] cursor-pointer transition-colors line-clamp-2">
-              {item.title}
-            </p>
-            <p className="text-xs text-gray-400 mt-0.5">{fmtAuthors(item.authors)} · {item.agencyAbbr}</p>
-          </div>
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <span className="text-xs text-gray-600 font-medium whitespace-nowrap">{item.quarter} {item.year}</span>
-      </td>
-      <td className="px-4 py-3">
-        <StatusBadge status={item.status} />
-      </td>
-      <td className="px-4 py-3">
-        <AccessBadge policy={item.accessPolicy} />
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex flex-wrap gap-1">
-          {item.sdgs.slice(0, 3).map(n => <SdgChip key={`tbl-sdg-${item.id}-${n}`} number={n} size="xs" />)}
-          {item.sdgs.length > 3 && <span className="text-[9px] text-gray-400 font-medium">+{item.sdgs.length - 3}</span>}
-        </div>
-      </td>
-      <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-        {item.downloads > 0 ? item.downloads.toLocaleString() : "—"}
-      </td>
-      <td className="px-4 py-3 text-center">
-        <div className="flex items-center justify-center gap-1">
-          <button onClick={onEdit} className="p-1.5 rounded-md hover:bg-blue-50 text-gray-400 hover:text-[#1E3A8A] transition-colors">
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={onManageAccess} className="p-1.5 rounded-md hover:bg-purple-50 text-gray-400 hover:text-purple-600 transition-colors">
-            <ShieldCheck className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-// ─── Main Component ────────────────────────────────────────────────────────────
+const FILTERS = ["all", "draft", "pending", "published", "rejected"] as const;
 
 export function ResearchRepository() {
-  const navigate = useNavigate();
+    const { user } = useAgencyContext();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [search, setSearch] = useState(searchParams.get("search") ?? "");
+    const [busyId, setBusyId] = useState<number | null>(null);
+    const status = searchParams.get("status") ?? "all";
+    const page = Math.max(1, Number(searchParams.get("page") ?? 1));
+    const query = searchParams.get("search") ?? "";
+    const url = `/api/rikms/agency/documents${queryString({ status: status === "all" ? null : status, search: query, page })}`;
+    const documents = useApi<Paginated<ResearchDocument>>(url);
+    const canCreate = hasPermission(user, "documents.create");
+    const canUpdate = hasPermission(user, "documents.update");
+    const canSubmit = hasPermission(user, "documents.submit");
+    const canArchive = hasPermission(user, "documents.archive");
 
-  // ── SDG Section state
-  const [sdgViewMode,    setSdgViewMode]    = useState<SDGViewMode>("by-category");
-  const [selectedSdgs,   setSelectedSdgs]   = useState<Set<number>>(new Set());
-  const [hoveredSdg,     setHoveredSdg]     = useState<number | null>(null);
-  const [collapsedCats,  setCollapsedCats]  = useState<Set<string>>(new Set());
+    useEffect(() => {
+        setSearch(query);
+    }, [query]);
 
-  // ── Filter state
-  const [search,         setSearch]         = useState("");
-  const [filterDocType,  setFilterDocType]  = useState<string>("All");
-  const [filterAgency,   setFilterAgency]   = useState<string>("All");
-  const [filterYear,     setFilterYear]     = useState<string>("All");
-  const [filterQuarter,  setFilterQuarter]  = useState<string>("All");
-  const [filterAccess,   setFilterAccess]   = useState<string>("All");
-  const [filterStatus,   setFilterStatus]   = useState<string>("All");
-  const [showFilters,    setShowFilters]     = useState(false);
+    function updateParams(updates: Record<string, string | null>) {
+        const next = new URLSearchParams(searchParams);
+        for (const [key, value] of Object.entries(updates)) {
+            if (value && value !== "all") next.set(key, value);
+            else next.delete(key);
+        }
+        setSearchParams(next);
+    }
 
-  // ── View state
-  const [viewMode,       setViewMode]       = useState<ViewMode>("grid");
-  const [sortBy,         setSortBy]         = useState<SortOption>("newest");
-  const [selectedIds,    setSelectedIds]    = useState<Set<number>>(new Set());
-  const [showAnalytics,  setShowAnalytics]  = useState(true);
-  const [currentPage,    setCurrentPage]    = useState(1);
-  const PAGE_SIZE = 9;
+    function submitSearch(event: React.FormEvent) {
+        event.preventDefault();
+        updateParams({ search: search.trim() || null, page: null });
+    }
 
-  // ── SDG helpers
-  const toggleSdg = (n: number) => {
-    setSelectedSdgs(prev => {
-      const next = new Set(prev);
-      next.has(n) ? next.delete(n) : next.add(n);
-      return next;
-    });
-    setCurrentPage(1);
-  };
-  const clearSdgs = () => { setSelectedSdgs(new Set()); setCurrentPage(1); };
+    async function submitDocument(document: ResearchDocument) {
+        if (
+            !window.confirm(
+                `Submit “${document.title}” for review? You can no longer edit it while it is pending.`,
+            )
+        )
+            return;
+        setBusyId(document.id);
+        try {
+            await apiPost(`/api/rikms/agency/documents/${document.id}/submit`);
+            toast.success("Research submitted for review.");
+            await documents.refresh();
+        } catch (error) {
+            toast.error(firstValidationError(error));
+        } finally {
+            setBusyId(null);
+        }
+    }
 
-  const toggleCat = (id: string) => setCollapsedCats(prev => {
-    const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  });
+    async function archiveDocument(document: ResearchDocument) {
+        if (!window.confirm(`Archive “${document.title}”? It will be removed from active repository views.`))
+            return;
+        setBusyId(document.id);
+        try {
+            await apiDelete(`/api/rikms/agency/documents/${document.id}`);
+            toast.success("Research record archived.");
+            await documents.refresh();
+        } catch (error) {
+            toast.error(firstValidationError(error));
+        } finally {
+            setBusyId(null);
+        }
+    }
 
-  // ── Active filter chips
-  const activeFilters: { label: string; onRemove: () => void }[] = [
-    ...Array.from(selectedSdgs).map(n => {
-      const sdg = SDG_DATA.find(s => s.number === n);
-      return { label: `SDG ${n} · ${sdg?.title ?? ""}`, onRemove: () => toggleSdg(n) };
-    }),
-    ...(filterDocType !== "All"  ? [{ label: filterDocType,        onRemove: () => setFilterDocType("All")  }] : []),
-    ...(filterAgency  !== "All"  ? [{ label: filterAgency,         onRemove: () => setFilterAgency("All")   }] : []),
-    ...(filterYear    !== "All"  ? [{ label: `Year: ${filterYear}`,onRemove: () => setFilterYear("All")     }] : []),
-    ...(filterQuarter !== "All"  ? [{ label: filterQuarter,        onRemove: () => setFilterQuarter("All")  }] : []),
-    ...(filterAccess  !== "All"  ? [{ label: filterAccess,         onRemove: () => setFilterAccess("All")   }] : []),
-    ...(filterStatus  !== "All"  ? [{ label: filterStatus,         onRemove: () => setFilterStatus("All")   }] : []),
-  ];
+    function download(document: ResearchDocument) {
+        window.location.assign(`/api/rikms/agency/documents/${document.id}/download`);
+    }
 
-  const clearAllFilters = () => {
-    clearSdgs();
-    setFilterDocType("All"); setFilterAgency("All"); setFilterYear("All");
-    setFilterQuarter("All"); setFilterAccess("All"); setFilterStatus("All");
-    setSearch("");
-    setCurrentPage(1);
-  };
+    const result = documents.data;
 
-  // ── Filtering + sorting
-  const filtered = useMemo(() => {
-    let items = RESEARCH_ITEMS.filter(item => {
-      const q = search.toLowerCase();
-      const matchSearch = !q || item.title.toLowerCase().includes(q) ||
-        item.authors.some(a => a.toLowerCase().includes(q)) ||
-        item.sdgs.some(s => `sdg ${s}`.includes(q)) ||
-        item.agencyAbbr.toLowerCase().includes(q);
-      const matchSdg    = selectedSdgs.size === 0 || item.sdgs.some(s => selectedSdgs.has(s));
-      const matchType   = filterDocType  === "All" || item.docType        === filterDocType;
-      const matchAgency = filterAgency   === "All" || item.agencyAbbr     === filterAgency;
-      const matchYear   = filterYear     === "All" || String(item.year)   === filterYear;
-      const matchQtr    = filterQuarter  === "All" || item.quarter        === filterQuarter;
-      const matchAccess = filterAccess   === "All" || item.accessPolicy   === filterAccess;
-      const matchStatus = filterStatus   === "All" || item.status         === filterStatus;
-      return matchSearch && matchSdg && matchType && matchAgency && matchYear && matchQtr && matchAccess && matchStatus;
-    });
-
-    items.sort((a, b) => {
-      if (sortBy === "newest")          return b.year - a.year || b.lastUpdated.localeCompare(a.lastUpdated);
-      if (sortBy === "oldest")          return a.year - b.year;
-      if (sortBy === "most-downloaded") return b.downloads - a.downloads;
-      // most-relevant: featured first, then ai-tagged, then newest
-      const scoreA = (a.featured ? 2 : 0) + (a.aiTagged ? 1 : 0);
-      const scoreB = (b.featured ? 2 : 0) + (b.aiTagged ? 1 : 0);
-      return scoreB - scoreA || b.year - a.year;
-    });
-
-    return items;
-  }, [search, selectedSdgs, filterDocType, filterAgency, filterYear, filterQuarter, filterAccess, filterStatus, sortBy]);
-
-  const totalPages   = Math.ceil(filtered.length / PAGE_SIZE);
-  const paginated    = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
-  const toggleSelect = (id: number) => setSelectedIds(prev => {
-    const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  });
-  const selectAll  = () => setSelectedIds(new Set(paginated.map(i => i.id)));
-  const clearSel   = () => setSelectedIds(new Set());
-
-  // ── Analytics data
-  const analyticsBar = SDG_DATA.slice(0, 10).map(sdg => ({
-    name:  `SDG ${sdg.number}`,
-    count: RESEARCH_ITEMS.filter(r => r.sdgs.includes(sdg.number)).length,
-    color: sdg.color,
-  }));
-  const pieData = [
-    { name: "Research Study",   value: RESEARCH_ITEMS.filter(r => r.docType === "Research Study").length,   color: "#1E3A8A" },
-    { name: "Terminal Report",  value: RESEARCH_ITEMS.filter(r => r.docType === "Terminal Report").length,  color: "#7C3AED" },
-    { name: "Project Report",   value: RESEARCH_ITEMS.filter(r => r.docType === "Project Report").length,   color: "#059669" },
-  ];
-
-  return (
-    <div className="space-y-5">
-      {/* ── Page Header ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <nav className="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
-            <Link to="/agency/dashboard" className="flex items-center gap-1 hover:text-[#1E3A8A] transition-colors">
-              <Home className="w-3.5 h-3.5" /> Dashboard
-            </Link>
-            <ChevronRight className="w-3 h-3" />
-            <span className="text-[#1E3A8A] font-semibold">Research Repository</span>
-          </nav>
-          <h1 className="text-[#1E3A8A]" style={{ fontSize: "1.5rem", fontWeight: 700 }}>
-            Research Repository
-          </h1>
-          <p className="text-gray-500 text-sm mt-0.5">
-            Explore research and reports categorized by Sustainable Development Goals
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#EFF6FF] border border-[#BFDBFE] rounded-xl">
-            <FileText className="w-3.5 h-3.5 text-[#1E3A8A]" />
-            <span className="text-xs text-[#1E3A8A] font-semibold">{RESEARCH_ITEMS.length} Documents</span>
-          </div>
-          <button
-            onClick={() => setShowAnalytics(!showAnalytics)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors ${
-              showAnalytics ? "bg-[#1E3A8A] text-white border-[#1E3A8A]" : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" /> Analytics
-          </button>
-          <Link to="/agency/upload"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-[#1E3A8A] text-white rounded-xl text-sm font-medium hover:bg-[#1E3A8A]/90 transition-colors shadow-sm">
-            <Plus className="w-4 h-4" /> Upload
-          </Link>
-        </div>
-      </div>
-
-      {/* ── Global Search ─────────────────────────────────────────────────────── */}
-      <div className="relative max-w-2xl mx-auto">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-        <input
-          type="text" value={search} onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
-          placeholder="Search by title, author, agency, or SDG…"
-          className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/20 focus:border-[#1E3A8A]/40"
-        />
-        {search && (
-          <button onClick={() => setSearch("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-
-      {/* ── Main Layout ───────────────────────────────────────────────────────── */}
-      <div className="flex gap-5">
-        {/* ── Left / Center ─────────────────────────────────────────────────── */}
-        <div className="flex-1 min-w-0 space-y-5">
-
-          {/* SDG Browse Section */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* Section header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 bg-[#1E3A8A]/10 rounded-xl flex items-center justify-center">
-                  <Globe className="w-5 h-5 text-[#1E3A8A]" />
-                </div>
+    return (
+        <div className="space-y-6">
+            <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
                 <div>
-                  <p className="text-[#1E3A8A] font-bold" style={{ fontSize: "0.95rem" }}>
-                    Browse by Sustainable Development Goals
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    Click cards to filter · Multi-select enabled
-                    {selectedSdgs.size > 0 && (
-                      <span className="ml-2 text-[#1E3A8A] font-semibold">
-                        {selectedSdgs.size} selected
-                      </span>
-                    )}
-                  </p>
+                    <h1 className="text-2xl font-bold text-[#1E3A8A]">Research Repository</h1>
+                    <p className="mt-1 text-sm text-gray-500">
+                        Manage drafts, submissions, publications, and access policies.
+                    </p>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {selectedSdgs.size > 0 && (
-                  <button onClick={clearSdgs}
-                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg font-medium hover:bg-red-100 transition-colors">
-                    <X className="w-3 h-3" /> Clear ({selectedSdgs.size})
-                  </button>
-                )}
-                {/* View toggle */}
-                <div className="flex items-center bg-gray-100 rounded-xl p-1 text-xs">
-                  <button
-                    onClick={() => setSdgViewMode("by-category")}
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-medium transition-all ${
-                      sdgViewMode === "by-category" ? "bg-white text-[#1E3A8A] shadow-sm" : "text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    <Layers className="w-3 h-3" /> By Category
-                  </button>
-                  <button
-                    onClick={() => setSdgViewMode("all")}
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-medium transition-all ${
-                      sdgViewMode === "all" ? "bg-white text-[#1E3A8A] shadow-sm" : "text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    <Grid3X3 className="w-3 h-3" /> All SDGs
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-5">
-              {/* Selected SDG chips */}
-              {selectedSdgs.size > 0 && (
-                <div className="flex flex-wrap gap-2 mb-4 p-3 bg-[#F8FAFF] border border-[#BFDBFE] rounded-xl">
-                  <span className="text-[10px] text-[#1E3A8A] font-bold self-center mr-1">FILTERING BY:</span>
-                  {Array.from(selectedSdgs).map(n => {
-                    const sdg = SDG_DATA.find(s => s.number === n);
-                    return (
-                      <span
-                        key={`sel-chip-${n}`}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-xs font-semibold"
-                        style={{ background: sdg?.color }}
-                      >
-                        SDG {n} · {sdg?.title}
-                        <button onClick={() => toggleSdg(n)} className="hover:bg-white/20 rounded-full p-0.5 transition-colors">
-                          <X className="w-2.5 h-2.5" />
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* By Category view */}
-              {sdgViewMode === "by-category" ? (
-                <div className="space-y-5">
-                  {SDG_CATEGORIES.map(cat => {
-                    const catSdgs = cat.sdgs.map(n => SDG_DATA.find(s => s.number === n)).filter(Boolean) as typeof SDG_DATA;
-                    const collapsed = collapsedCats.has(cat.id);
-                    const catSelected = catSdgs.filter(s => selectedSdgs.has(s.number)).length;
-                    return (
-                      <div key={`cat-${cat.id}`} className="rounded-xl border overflow-hidden" style={{ borderColor: cat.border }}>
-                        {/* Category header */}
-                        <button
-                          onClick={() => toggleCat(cat.id)}
-                          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:opacity-90 transition-opacity"
-                          style={{ background: cat.bg }}
-                        >
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: cat.color + "20" }}>
-                            <cat.icon className="w-4 h-4" style={{ color: cat.color }} />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="font-bold text-sm" style={{ color: cat.color }}>{cat.label}</p>
-                              {catSelected > 0 && (
-                                <span className="px-2 py-0.5 text-white text-[10px] font-bold rounded-full" style={{ background: cat.color }}>
-                                  {catSelected} selected
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-gray-500">{cat.description}</p>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs font-medium" style={{ color: cat.color }}>
-                              SDG {catSdgs.map(s => s.number).join(", ")}
-                            </span>
-                            {collapsed ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400 rotate-180" />}
-                          </div>
-                        </button>
-
-                        {/* SDG cards grid */}
-                        {!collapsed && (
-                          <div className="p-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
-                            {catSdgs.map(sdg => (
-                              <SdgCard
-                                key={`cat-sdg-card-${sdg.number}`}
-                                sdg={sdg}
-                                count={SDG_RESEARCH_COUNTS[sdg.number] ?? 0}
-                                selected={selectedSdgs.has(sdg.number)}
-                                onClick={() => toggleSdg(sdg.number)}
-                                onHover={setHoveredSdg}
-                                hovered={hoveredSdg}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                /* All SDGs flat grid */
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-5 xl:grid-cols-6 gap-2.5">
-                  {SDG_DATA.map(sdg => (
-                    <SdgCard
-                      key={`all-sdg-card-${sdg.number}`}
-                      sdg={sdg}
-                      count={SDG_RESEARCH_COUNTS[sdg.number] ?? 0}
-                      selected={selectedSdgs.has(sdg.number)}
-                      onClick={() => toggleSdg(sdg.number)}
-                      onHover={setHoveredSdg}
-                      hovered={hoveredSdg}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── Filter Bar ─────────────────────────────────────────────────────── */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
-            <div className="flex items-center gap-3 flex-wrap">
-              {/* Filters toggle */}
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors ${
-                  showFilters || activeFilters.length > 0
-                    ? "bg-[#1E3A8A] text-white border-[#1E3A8A]"
-                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                <Filter className="w-4 h-4" />
-                Filters
-                {activeFilters.length > 0 && (
-                  <span className="bg-white/25 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                    {activeFilters.length}
-                  </span>
-                )}
-              </button>
-
-              {/* Quick filter pills */}
-              <div className="flex items-center gap-2 flex-wrap flex-1">
-                <FilterSelect label="Type"    value={filterDocType}  onChange={v => { setFilterDocType(v); setCurrentPage(1); }}
-                  options={["All", ...DOC_TYPE_LIST]} />
-                <FilterSelect label="Agency"  value={filterAgency}   onChange={v => { setFilterAgency(v); setCurrentPage(1); }}
-                  options={["All", ...AGENCIES_LIST]} />
-                <FilterSelect label="Year"    value={filterYear}     onChange={v => { setFilterYear(v); setCurrentPage(1); }}
-                  options={["All", ...YEARS_LIST]} />
-                <FilterSelect label="Status"  value={filterStatus}   onChange={v => { setFilterStatus(v); setCurrentPage(1); }}
-                  options={["All", "Published", "Draft", "Archived"]} />
-              </div>
-
-              {/* Sort & view */}
-              <div className="flex items-center gap-2 shrink-0 ml-auto">
-                <div className="relative">
-                  <select
-                    value={sortBy}
-                    onChange={e => setSortBy(e.target.value as SortOption)}
-                    className="appearance-none pl-3 pr-8 py-2 text-xs bg-white border border-gray-200 rounded-xl font-medium text-gray-600 focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]/30 cursor-pointer"
-                  >
-                    {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <ArrowUpDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-                </div>
-                <div className="flex items-center bg-gray-100 rounded-xl p-1">
-                  <button onClick={() => setViewMode("grid")}
-                    className={`p-1.5 rounded-lg transition-all ${viewMode === "grid" ? "bg-white text-[#1E3A8A] shadow-sm" : "text-gray-400 hover:text-gray-600"}`}>
-                    <LayoutGrid className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => setViewMode("table")}
-                    className={`p-1.5 rounded-lg transition-all ${viewMode === "table" ? "bg-white text-[#1E3A8A] shadow-sm" : "text-gray-400 hover:text-gray-600"}`}>
-                    <List className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Expanded filters */}
-            {showFilters && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 pt-3 border-t border-gray-100">
-                <FilterSelect label="Quarter"  value={filterQuarter} onChange={v => { setFilterQuarter(v); setCurrentPage(1); }}
-                  options={["All", ...QUARTERS_LIST]} />
-                <FilterSelect label="Access"   value={filterAccess}  onChange={v => { setFilterAccess(v); setCurrentPage(1); }}
-                  options={["All", ...ACCESS_POLICIES]} />
-              </div>
-            )}
-
-            {/* Active filter chips */}
-            {activeFilters.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-1">
-                {activeFilters.map((f, i) => {
-                  const sdgNum = selectedSdgs.size > 0 && i < selectedSdgs.size
-                    ? Array.from(selectedSdgs)[i]
-                    : null;
-                  const sdgColor = sdgNum ? SDG_DATA.find(s => s.number === sdgNum)?.color : undefined;
-                  return (
-                    <span
-                      key={`af-chip-${i}`}
-                      className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-semibold text-white"
-                      style={{ background: sdgColor ?? "#1E3A8A" }}
+                {canCreate && (
+                    <Link
+                        to="/agency/upload"
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1E3A8A] px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-900"
                     >
-                      {f.label}
-                      <button
-                        onClick={f.onRemove}
-                        className="w-4 h-4 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </span>
-                  );
-                })}
-                <button onClick={clearAllFilters}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs text-gray-500 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors font-medium">
-                  <RefreshCw className="w-3 h-3" /> Clear all
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* ── Document Area ─────────────────────────────────────────────────── */}
-          <div className="space-y-4">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <p className="text-sm text-gray-500">
-                  <span className="text-gray-900 font-semibold">{filtered.length}</span> document{filtered.length !== 1 ? "s" : ""} found
-                  {selectedSdgs.size > 0 && (
-                    <span className="ml-1 text-[#1E3A8A]">· {selectedSdgs.size} SDG filter{selectedSdgs.size !== 1 ? "s" : ""} active</span>
-                  )}
-                </p>
-                {selectedIds.size > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-[#1E3A8A] font-semibold bg-[#EFF6FF] px-2 py-0.5 rounded-full">
-                      {selectedIds.size} selected
-                    </span>
-                    <button onClick={clearSel} className="text-xs text-gray-400 hover:text-gray-600">Deselect all</button>
-                  </div>
+                        <Plus className="h-4 w-4" />
+                        Upload research
+                    </Link>
                 )}
-              </div>
-              {viewMode === "table" && (
-                <button onClick={selectAll} className="text-xs text-[#1E3A8A] hover:underline font-medium">
-                  Select all on page
-                </button>
-              )}
-            </div>
+            </header>
 
-            {filtered.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-gray-200 p-16 flex flex-col items-center text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
-                  <Search className="w-8 h-8 text-gray-300" />
-                </div>
-                <p className="text-gray-700 font-semibold mb-1">No documents found</p>
-                <p className="text-sm text-gray-400 mb-4">Try adjusting your search or filter criteria</p>
-                <button onClick={clearAllFilters}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-[#1E3A8A] text-white rounded-xl text-sm font-medium hover:bg-[#1E3A8A]/90 transition-colors">
-                  <RefreshCw className="w-3.5 h-3.5" /> Reset Filters
-                </button>
-              </div>
-            ) : viewMode === "grid" ? (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {paginated.map(item => (
-                  <DocCard
-                    key={`doc-card-${item.id}`}
-                    item={item}
-                    onEdit={() => navigate(`/agency/research/${item.id}/edit`)}
-                    onManageAccess={() => navigate(`/agency/research/${item.id}/access-control`)}
-                  />
-                ))}
-              </div>
-            ) : (
-              /* Table view */
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-[#F8FAFF] border-b border-gray-200">
-                        <th className="px-4 py-3 w-10">
-                          <input type="checkbox"
-                            checked={selectedIds.size === paginated.length && paginated.length > 0}
-                            onChange={selectedIds.size === paginated.length ? clearSel : selectAll}
-                            className="rounded border-gray-300" />
-                        </th>
-                        {["Title & Author", "Period", "Status", "Access", "SDG Tags", "Downloads", ""].map((h, i) => (
-                          <th key={`th-${i}`} className="px-4 py-3 text-left text-xs text-gray-500 font-semibold whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginated.map(item => (
-                        <DocTableRow
-                          key={`tbl-row-${item.id}`}
-                          item={item}
-                          selected={selectedIds.has(item.id)}
-                          onToggle={() => toggleSelect(item.id)}
-                          onEdit={() => navigate(`/agency/research/${item.id}/edit`)}
-                          onManageAccess={() => navigate(`/agency/research/${item.id}/access-control`)}
+            <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <form onSubmit={submitSearch} className="flex flex-col gap-3 sm:flex-row">
+                    <label className="relative flex-1">
+                        <span className="sr-only">Search repository</span>
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                        <input
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            placeholder="Search title, author, category, or keyword…"
+                            className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-3 text-sm focus:border-[#1E3A8A] focus:outline-none focus:ring-2 focus:ring-blue-100"
                         />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-400">
-                  Showing {((currentPage - 1) * PAGE_SIZE) + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length}
-                </p>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4 rotate-180" />
-                  </button>
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const page = i + 1;
-                    return (
-                      <button
-                        key={`pg-${page}`}
-                        onClick={() => setCurrentPage(page)}
-                        className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${
-                          currentPage === page
-                            ? "bg-[#1E3A8A] text-white"
-                            : "border border-gray-200 text-gray-600 hover:bg-gray-50"
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    );
-                  })}
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Right Analytics Panel ─────────────────────────────────────────── */}
-        {showAnalytics && (
-          <div className="xl:w-[260px] shrink-0 space-y-4 xl:sticky xl:top-20">
-            <div className="flex items-center gap-2 px-1">
-              <BarChart3 className="w-4 h-4 text-[#1E3A8A]" />
-              <span className="text-sm text-[#1E3A8A] font-bold">Analytics</span>
-            </div>
-
-            {/* Stats strip */}
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: "Total Docs",  value: RESEARCH_ITEMS.length,                                        color: "text-[#1E3A8A]", bg: "bg-[#EFF6FF]" },
-                { label: "Published",   value: RESEARCH_ITEMS.filter(r => r.status === "Published").length,  color: "text-green-600", bg: "bg-green-50"  },
-                { label: "SDGs Covered",value: new Set(RESEARCH_ITEMS.flatMap(r => r.sdgs)).size,            color: "text-[#0EA5E9]", bg: "bg-sky-50"    },
-                { label: "AI Tagged",   value: RESEARCH_ITEMS.filter(r => r.aiTagged).length,               color: "text-purple-600",bg: "bg-purple-50" },
-              ].map(stat => (
-                <div key={`stat-${stat.label}`} className={`${stat.bg} rounded-xl p-3 text-center`}>
-                  <p className={`font-bold text-lg ${stat.color}`}>{stat.value}</p>
-                  <p className="text-[10px] text-gray-500 font-medium">{stat.label}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Documents per SDG bar chart */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-              <p className="text-[10px] text-gray-400 font-bold mb-3">DOCS PER SDG (TOP 10)</p>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={analyticsBar} layout="vertical" margin={{ top: 0, right: 8, left: 32, bottom: 0 }}>
-                  <XAxis type="number" tick={{ fontSize: 8 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 8 }} />
-                  <Tooltip
-                    contentStyle={{ fontSize: 10, borderRadius: 8, border: "1px solid #E5E7EB" }}
-                    cursor={{ fill: "#F3F4F6" }}
-                  />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                    {analyticsBar.map((entry, index) => (
-                      <Cell key={`bar-cell-${index}`} fill={entry.color} />
+                    </label>
+                    <button
+                        type="submit"
+                        className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800"
+                    >
+                        Search
+                    </button>
+                </form>
+                <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filter by status">
+                    {FILTERS.map((filter) => (
+                        <button
+                            key={filter}
+                            type="button"
+                            onClick={() => updateParams({ status: filter, page: null })}
+                            aria-pressed={
+                                status === filter || (filter === "all" && !searchParams.has("status"))
+                            }
+                            className={`rounded-full border px-3 py-1.5 text-xs font-medium capitalize ${status === filter || (filter === "all" && !searchParams.has("status")) ? "border-[#1E3A8A] bg-blue-50 text-[#1E3A8A]" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                        >
+                            {filter}
+                        </button>
                     ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+                </div>
+            </section>
 
-            {/* Document type pie */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-              <p className="text-[10px] text-gray-400 font-bold mb-2">BY DOCUMENT TYPE</p>
-              <ResponsiveContainer width="100%" height={130}>
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={32} outerRadius={55} paddingAngle={3} dataKey="value">
-                    {pieData.map((entry, index) => (
-                      <Cell key={`pie-cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8 }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-1.5 mt-1">
-                {pieData.map(d => (
-                  <div key={`pie-leg-${d.name}`} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
-                      <span className="text-[10px] text-gray-500">{d.name}</span>
-                    </div>
-                    <span className="text-[10px] font-bold text-gray-700">{d.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* SDG legend strip */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-              <p className="text-[10px] text-gray-400 font-bold mb-3">SDG CATEGORIES</p>
-              <div className="space-y-2">
-                {SDG_CATEGORIES.map(cat => {
-                  const total = cat.sdgs.reduce((sum, n) => sum + (SDG_RESEARCH_COUNTS[n] ?? 0), 0);
-                  return (
-                    <div key={`leg-cat-${cat.id}`} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: cat.color + "20" }}>
-                          <cat.icon className="w-3 h-3" style={{ color: cat.color }} />
+            {documents.loading && <LoadingState label="Loading repository…" />}
+            {documents.error && (
+                <ErrorState message={documents.error} onRetry={() => void documents.refresh()} />
+            )}
+            {!documents.loading &&
+                !documents.error &&
+                result &&
+                (result.data.length === 0 ? (
+                    <EmptyState
+                        title="No matching research records"
+                        description={
+                            query || status !== "all"
+                                ? "Try changing your search or status filter."
+                                : "Upload a record to begin building your agency repository."
+                        }
+                    />
+                ) : (
+                    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[920px] text-left text-sm">
+                                <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                                    <tr>
+                                        <th className="px-5 py-3 font-semibold">Research</th>
+                                        <th className="px-4 py-3 font-semibold">Type / year</th>
+                                        <th className="px-4 py-3 font-semibold">Status</th>
+                                        <th className="px-4 py-3 font-semibold">File</th>
+                                        <th className="px-4 py-3 font-semibold">Updated</th>
+                                        <th className="px-5 py-3 text-right font-semibold">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {result.data.map((document) => (
+                                        <tr key={document.id} className="align-top hover:bg-gray-50/70">
+                                            <td className="max-w-lg px-5 py-4">
+                                                <p className="font-medium text-gray-900">{document.title}</p>
+                                                <p className="mt-1 line-clamp-1 text-xs text-gray-500">
+                                                    {document.authors.join(", ") || "No authors yet"}
+                                                </p>
+                                                <p className="mt-1 text-xs text-gray-400">
+                                                    {document.category}
+                                                </p>
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <p className="text-gray-700">
+                                                    {formatDocumentType(document.documentType)}
+                                                </p>
+                                                <p className="mt-1 text-xs text-gray-500">
+                                                    {document.year}
+                                                    {document.quarter ? ` · ${document.quarter}` : ""}
+                                                </p>
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <StatusBadge status={document.status} />
+                                                {document.isAiTagged && (
+                                                    <p className="mt-2 text-[11px] text-purple-600">
+                                                        AI-assisted metadata
+                                                    </p>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <p className="text-gray-700">
+                                                    {document.fileSize
+                                                        ? (document.fileType ?? "Document")
+                                                        : "No file attached"}
+                                                </p>
+                                                {document.fileSize && (
+                                                    <p className="mt-1 text-xs text-gray-500">
+                                                        {formatBytes(document.fileSize)}
+                                                    </p>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-4 text-gray-600">
+                                                {formatDate(document.updatedAt)}
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="flex justify-end gap-1">
+                                                    {document.status === "published" && (
+                                                        <Link
+                                                            to={`/research/${document.id}`}
+                                                            className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-[#1E3A8A]"
+                                                            aria-label={`View ${document.title}`}
+                                                            title="View public record"
+                                                        >
+                                                            <Eye className="h-4 w-4" />
+                                                        </Link>
+                                                    )}
+                                                    {canUpdate &&
+                                                        (document.status === "draft" ||
+                                                            document.status === "rejected") && (
+                                                            <Link
+                                                                to={`/agency/research/${document.id}/edit`}
+                                                                className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-[#1E3A8A]"
+                                                                aria-label={`Edit ${document.title}`}
+                                                                title="Edit metadata"
+                                                            >
+                                                                <Pencil className="h-4 w-4" />
+                                                            </Link>
+                                                        )}
+                                                    {canUpdate && document.status === "published" && (
+                                                        <Link
+                                                            to={`/agency/research/${document.id}/edit`}
+                                                            className="rounded-md p-2 text-amber-700 hover:bg-amber-50"
+                                                            aria-label={`Create a revision of ${document.title}`}
+                                                            title="Create revision"
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </Link>
+                                                    )}
+                                                    {canUpdate && (
+                                                        <Link
+                                                            to={`/agency/research/${document.id}/access-control`}
+                                                            className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-[#1E3A8A]"
+                                                            aria-label={`Manage access for ${document.title}`}
+                                                            title="Access control"
+                                                        >
+                                                            <LockKeyhole className="h-4 w-4" />
+                                                        </Link>
+                                                    )}
+                                                    <Link
+                                                        to={`/agency/research/${document.id}/versions`}
+                                                        className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-[#1E3A8A]"
+                                                        aria-label={`View version history for ${document.title}`}
+                                                        title="Version history"
+                                                    >
+                                                        <History className="h-4 w-4" />
+                                                    </Link>
+                                                    {document.canDownload && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => download(document)}
+                                                            className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-[#1E3A8A]"
+                                                            aria-label={`Download ${document.title}`}
+                                                            title="Download"
+                                                        >
+                                                            <Download className="h-4 w-4" />
+                                                        </button>
+                                                    )}
+                                                    {canSubmit &&
+                                                        (document.status === "draft" ||
+                                                            document.status === "rejected") && (
+                                                            <button
+                                                                type="button"
+                                                                disabled={busyId === document.id}
+                                                                onClick={() => void submitDocument(document)}
+                                                                className="rounded-md p-2 text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                                                                aria-label={`Submit ${document.title} for review`}
+                                                                title="Submit for review"
+                                                            >
+                                                                <Send className="h-4 w-4" />
+                                                            </button>
+                                                        )}
+                                                    {canArchive && document.status !== "archived" && (
+                                                        <button
+                                                            type="button"
+                                                            disabled={busyId === document.id}
+                                                            onClick={() => void archiveDocument(document)}
+                                                            className="rounded-md p-2 text-red-500 hover:bg-red-50 disabled:opacity-50"
+                                                            aria-label={`Archive ${document.title}`}
+                                                            title="Archive"
+                                                        >
+                                                            <Archive className="h-4 w-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
-                        <span className="text-[11px] text-gray-600 font-medium">{cat.label}</span>
-                      </div>
-                      <span className="text-[10px] font-bold" style={{ color: cat.color }}>{total}</span>
+                        <footer className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 px-5 py-4 text-sm text-gray-500 sm:flex-row">
+                            <span>
+                                Showing {result.data.length} of {result.meta.total} records
+                            </span>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    disabled={page <= 1}
+                                    onClick={() => updateParams({ page: String(page - 1) })}
+                                    className="rounded-lg border border-gray-200 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    Previous
+                                </button>
+                                <span className="px-2 py-1.5">
+                                    Page {result.meta.currentPage} of {Math.max(1, result.meta.lastPage)}
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled={page >= result.meta.lastPage}
+                                    onClick={() => updateParams({ page: String(page + 1) })}
+                                    className="rounded-lg border border-gray-200 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </footer>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Selected SDG insight */}
-            {selectedSdgs.size > 0 && (
-              <div className="bg-[#EFF6FF] border border-[#BFDBFE] rounded-xl p-4">
-                <p className="text-[10px] text-[#1E3A8A] font-bold mb-2">FILTER INSIGHT</p>
-                <p className="text-sm text-[#1E3A8A] font-semibold">{filtered.length} document{filtered.length !== 1 ? "s" : ""}</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">match your SDG selection</p>
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {Array.from(selectedSdgs).map(n => {
-                    const sdg = SDG_DATA.find(s => s.number === n);
-                    return (
-                      <span key={`insight-sdg-${n}`} className="w-6 h-6 rounded flex items-center justify-center text-white text-[10px] font-black" style={{ background: sdg?.color }}>
-                        {n}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Shared tiny filter select ─────────────────────────────────────────────────
-
-function FilterSelect({ label, value, onChange, options }: {
-  label: string; value: string; onChange: (v: string) => void; options: string[];
-}) {
-  return (
-    <div className="relative">
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className={`appearance-none pl-3 pr-7 py-1.5 text-xs border rounded-xl font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]/30 transition-colors ${
-          value !== "All"
-            ? "bg-[#1E3A8A] text-white border-[#1E3A8A]"
-            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-        }`}
-      >
-        <option value="All">{label}: All</option>
-        {options.filter(o => o !== "All").map(o => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-      <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none ${value !== "All" ? "text-white" : "text-gray-400"}`} />
-    </div>
-  );
+                ))}
+        </div>
+    );
 }

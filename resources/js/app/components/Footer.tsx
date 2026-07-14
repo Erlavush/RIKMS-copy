@@ -1,49 +1,93 @@
-import { BookOpen } from "lucide-react";
+import { BookOpen, Mail } from "lucide-react";
 import { Link } from "react-router";
+import { useBootstrap } from "../hooks/useBootstrap";
 
 export function Footer() {
-  return (
-    <footer className="bg-[#1E3A8A] text-white">
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* RIKMS Column */}
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-white" />
-              </div>
-              <span style={{ fontSize: "1.1rem", fontWeight: 700 }}>RIKMS</span>
+    const { data } = useBootstrap();
+    const siteName = data?.platform?.siteName ?? "RIKMS";
+    const supportEmail = data?.platform?.supportEmail;
+    return (
+        <footer className="bg-[#1E3A8A] text-white">
+            <div className="mx-auto max-w-[1200px] px-4 py-12 sm:px-6">
+                <div className="grid gap-8 sm:grid-cols-3">
+                    <div>
+                        <div className="mb-4 flex items-center gap-2">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20">
+                                <BookOpen className="h-5 w-5" />
+                            </span>
+                            <span className="text-lg font-bold">{siteName}</span>
+                        </div>
+                        <p className="max-w-sm text-sm leading-relaxed text-blue-200">
+                            A regional repository for reviewed research and institutional knowledge in the
+                            Davao Region.
+                        </p>
+                    </div>
+                    <nav aria-label="Research links">
+                        <h2 className="mb-4 font-semibold">Research</h2>
+                        <ul className="space-y-2 text-sm text-blue-200">
+                            <li>
+                                <Link to="/browse" className="hover:text-white">
+                                    Browse research
+                                </Link>
+                            </li>
+                            <li>
+                                <Link to="/agencies" className="hover:text-white">
+                                    Participating agencies
+                                </Link>
+                            </li>
+                            <li>
+                                <Link to="/about" className="hover:text-white">
+                                    About RIKMS
+                                </Link>
+                            </li>
+                        </ul>
+                    </nav>
+                    <nav aria-label="Support and account links">
+                        <h2 className="mb-4 font-semibold">Support and access</h2>
+                        <ul className="space-y-2 text-sm text-blue-200">
+                            <li className="flex flex-wrap gap-x-3 gap-y-2">
+                                <Link to="/help" className="hover:text-white">
+                                    Help
+                                </Link>
+                                <Link to="/contact" className="hover:text-white">
+                                    Contact
+                                </Link>
+                                <Link to="/privacy" className="hover:text-white">
+                                    Privacy
+                                </Link>
+                                <Link to="/terms" className="hover:text-white">
+                                    Terms
+                                </Link>
+                            </li>
+                            <li>
+                                <Link to="/login" className="hover:text-white">
+                                    Agency portal
+                                </Link>
+                            </li>
+                            <li>
+                                <Link to="/admin/login" className="hover:text-white">
+                                    System administration
+                                </Link>
+                            </li>
+                            {supportEmail && (
+                                <li>
+                                    <a
+                                        href={`mailto:${supportEmail}`}
+                                        className="inline-flex items-center gap-1 hover:text-white"
+                                    >
+                                        <Mail className="h-3 w-3" />
+                                        {supportEmail}
+                                    </a>
+                                </li>
+                            )}
+                        </ul>
+                    </nav>
+                </div>
+                <div className="mt-10 border-t border-white/20 pt-6 text-center text-sm text-blue-200">
+                    &copy; {new Date().getFullYear()} {siteName}. Research access is governed by each
+                    contributing agency.
+                </div>
             </div>
-            <ul className="space-y-2 text-sm text-blue-200">
-              <li><Link to="/about" className="hover:text-white transition-colors">About</Link></li>
-              <li><Link to="/" className="hover:text-white transition-colors">Help</Link></li>
-              <li><Link to="/" className="hover:text-white transition-colors">Contact</Link></li>
-            </ul>
-          </div>
-
-          {/* Research Column */}
-          <div>
-            <h4 className="text-white mb-4" style={{ fontSize: "1rem", fontWeight: 600 }}>Research</h4>
-            <ul className="space-y-2 text-sm text-blue-200">
-              <li><Link to="/browse" className="hover:text-white transition-colors">Browse Research</Link></li>
-              <li><Link to="/agencies" className="hover:text-white transition-colors">Agencies</Link></li>
-            </ul>
-          </div>
-
-          {/* Legal Column */}
-          <div>
-            <h4 className="text-white mb-4" style={{ fontSize: "1rem", fontWeight: 600 }}>Legal</h4>
-            <ul className="space-y-2 text-sm text-blue-200">
-              <li><Link to="/" className="hover:text-white transition-colors">Privacy Policy</Link></li>
-              <li><Link to="/" className="hover:text-white transition-colors">Terms of Use</Link></li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="mt-10 pt-6 border-t border-white/20 text-center text-sm text-blue-200">
-          &copy; {new Date().getFullYear()} Regionwide Integrated Knowledge Management System (RIKMS)
-        </div>
-      </div>
-    </footer>
-  );
+        </footer>
+    );
 }

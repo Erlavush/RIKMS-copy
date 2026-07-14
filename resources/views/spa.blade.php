@@ -4,14 +4,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>RIKMS-copy</title>
-    <script>
-        window.__RIKMS_BOOTSTRAP__ = @json($bootstrap, JSON_UNESCAPED_SLASHES);
-    </script>
+    <meta name="description" content="Regional Innovation and Knowledge Management System research repository">
+    <meta name="theme-color" content="#1E3A8A">
+    <title>{{ config('app.name', 'RIKMS') }}</title>
     @viteReactRefresh
     @vite('resources/js/main.tsx')
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root"><noscript>RIKMS requires JavaScript to run this application.</noscript></div>
 </body>
 </html>

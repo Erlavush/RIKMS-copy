@@ -23,9 +23,10 @@ class StoreAccessRequestRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'requester_name' => ['nullable', 'string', 'max:255'],
-            'requester_email' => ['nullable', 'email', 'max:255'],
-            'message' => ['nullable', 'string', 'max:2000'],
+            'requester_name' => [$this->user() ? 'prohibited' : 'required', 'string', 'max:255'],
+            'requester_email' => [$this->user() ? 'prohibited' : 'required', 'email:rfc', 'max:255'],
+            'requester_organization' => ['nullable', 'string', 'max:255'],
+            'message' => ['required', 'string', 'min:10', 'max:2000'],
         ];
     }
 }

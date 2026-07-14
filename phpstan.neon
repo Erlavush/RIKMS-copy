@@ -1,5 +1,5 @@
 includes:
-    - ./vendor/larastan/larastan/extension.neon
+    - vendor/larastan/larastan/extension.neon
 
 parameters:
     paths:
@@ -31,6 +31,7 @@ parameters:
     #    Highlights unbounded operations, infinite loops, and Division-by-Zero.
     # =========================================================================
     level: 8
+    tmpDir: storage/framework/cache/phpstan
 
     # Exclude directories that do not contain core business logic
     excludePaths:

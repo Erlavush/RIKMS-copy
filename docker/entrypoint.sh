@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -eu
+
+# Cache only after Cloud Run has injected environment variables and secrets.
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

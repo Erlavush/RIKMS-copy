@@ -19,7 +19,7 @@ class DocumentReadinessService
             return [
                 1 => 'Doc Type',
                 2 => 'Details',
-                3 => 'AI Metadata',
+                3 => 'Metadata Draft',
                 4 => 'Performance',
                 5 => 'PAP',
                 6 => 'Financials',
@@ -32,7 +32,7 @@ class DocumentReadinessService
         return [
             1 => 'Doc Type',
             2 => 'Upload',
-            3 => 'AI Metadata',
+            3 => 'Metadata Draft',
             4 => 'SDG Tagging',
             5 => 'Access',
             6 => 'Review',
@@ -49,7 +49,7 @@ class DocumentReadinessService
     public function completionScore(Document $document): int
     {
         $score = 0;
-        $score += $document->file_path ? 20 : 0;
+        $score += ($document->file_path || ($document->access_mode === 'external_link_only' && $document->external_url)) ? 20 : 0;
         $score += $document->metadata ? 25 : 0;
         $score += $document->sdgTags->count() > 0 ? 20 : 0;
         $score += $document->access_mode ? 15 : 0;

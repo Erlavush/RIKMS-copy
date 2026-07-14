@@ -26,6 +26,8 @@ class BrokenAccessControlTest extends TestCase
             'name' => 'User One',
             'email' => 'user1@example.com',
             'role' => 'agency_admin',
+            'must_change_password' => false,
+            'is_active' => true,
         ]);
 
         $agency2 = Agency::create(['name' => 'Agency Two']);
@@ -34,6 +36,8 @@ class BrokenAccessControlTest extends TestCase
             'name' => 'User Two',
             'email' => 'user2@example.com',
             'role' => 'agency_admin',
+            'must_change_password' => false,
+            'is_active' => true,
         ]);
 
         // Create a document owned by Agency 2
@@ -51,7 +55,7 @@ class BrokenAccessControlTest extends TestCase
         ]);
 
         // Attempting to download from user1 (from Agency 1) should yield 403 Forbidden
-        $response = $this->actingAs($user1)->getJson("/documents/{$document->id}/download");
+        $response = $this->actingAs($user1)->getJson("/api/rikms/agency/documents/{$document->id}/download");
         $response->assertStatus(403);
     }
 
@@ -67,6 +71,8 @@ class BrokenAccessControlTest extends TestCase
             'name' => 'User One',
             'email' => 'user1@example.com',
             'role' => 'agency_admin',
+            'must_change_password' => false,
+            'is_active' => true,
         ]);
 
         $agency2 = Agency::create(['name' => 'Agency Two']);
@@ -75,6 +81,8 @@ class BrokenAccessControlTest extends TestCase
             'name' => 'User Two',
             'email' => 'user2@example.com',
             'role' => 'agency_admin',
+            'must_change_password' => false,
+            'is_active' => true,
         ]);
 
         // Create a pending document owned by Agency 2
