@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\User;
 use App\Notifications\DocumentReviewMailNotification;
 use App\Notifications\DocumentSubmittedMailNotification;
+use App\Support\DocumentStorage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -204,7 +205,7 @@ class DocumentWorkflowService
             if (! $document->external_url || ! filter_var($document->external_url, FILTER_VALIDATE_URL)) {
                 $errors['external_url'] = 'A valid external URL is required.';
             }
-        } elseif (! $document->file_path || ! Storage::disk('local')->exists($document->file_path)) {
+        } elseif (! $document->file_path || ! Storage::disk(DocumentStorage::disk())->exists($document->file_path)) {
             $errors['document_file'] = 'An available document file is required.';
         }
         if ($document->access_mode === 'embargo_until_date' && (! $document->embargo_until || ! $document->embargo_until->isFuture())) {

@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\DocumentMetadata;
 use App\Models\SdgTag;
 use App\Models\User;
+use App\Support\DocumentStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -32,10 +33,10 @@ class DocumentPersistenceService
 
         try {
             if ($request->hasFile('document_file')) {
-                $paths['document'] = $request->file('document_file')->store('research-documents', 'local');
+                $paths['document'] = $request->file('document_file')->store('research-documents', DocumentStorage::disk());
             }
             if ($request->hasFile('highlight_file')) {
-                $paths['highlight'] = $request->file('highlight_file')->store('highlight-attachments', 'local');
+                $paths['highlight'] = $request->file('highlight_file')->store('highlight-attachments', DocumentStorage::disk());
             }
 
             return DB::transaction(function () use ($data, $request, $user, $paths): Document {
@@ -83,7 +84,7 @@ class DocumentPersistenceService
             });
         } catch (Throwable $exception) {
             foreach ($paths as $path) {
-                Storage::disk('local')->delete($path);
+                Storage::disk(DocumentStorage::disk())->delete($path);
             }
             throw $exception;
         }
@@ -95,10 +96,10 @@ class DocumentPersistenceService
 
         try {
             if ($request->hasFile('document_file')) {
-                $newPaths['document'] = $request->file('document_file')->store('research-documents', 'local');
+                $newPaths['document'] = $request->file('document_file')->store('research-documents', DocumentStorage::disk());
             }
             if ($request->hasFile('highlight_file')) {
-                $newPaths['highlight'] = $request->file('highlight_file')->store('highlight-attachments', 'local');
+                $newPaths['highlight'] = $request->file('highlight_file')->store('highlight-attachments', DocumentStorage::disk());
             }
 
             return DB::transaction(function () use ($document, $data, $request, $user, $newPaths): Document {
@@ -158,7 +159,7 @@ class DocumentPersistenceService
             });
         } catch (Throwable $exception) {
             foreach ($newPaths as $path) {
-                Storage::disk('local')->delete($path);
+                Storage::disk(DocumentStorage::disk())->delete($path);
             }
             throw $exception;
         }

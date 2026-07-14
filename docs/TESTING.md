@@ -1,5 +1,8 @@
 # Testing RIKMS
 
+The production target, scope boundary, evidence contract, and release
+acceptance rule are frozen in [PENTEST_BASELINE.md](PENTEST_BASELINE.md).
+
 ## Complete local suite
 
 ```bash
@@ -9,7 +12,7 @@
 npm run check
 ```
 
-Backend feature tests use in-memory SQLite and must not touch `database/database.sqlite`. File tests use Laravel's fake local disk. Frontend tests run in jsdom and should test visible behavior and API error handling rather than internal component state.
+Backend feature tests use in-memory SQLite and must not touch `database/database.sqlite`. File tests use Laravel's fake `documents` disk. Frontend tests run in jsdom and should test visible behavior and API error handling rather than internal component state.
 
 ## Required regression coverage
 
@@ -23,3 +26,5 @@ Backend feature tests use in-memory SQLite and must not touch `database/database
 - Embargo, restricted, external-link, and public download policies are enforced.
 - Archive and restore preserve the correct prior state.
 - Login throttling, CSRF, validation, and audit logging remain active.
+- Trusted proxy IP/HTTPS handling, origin restrictions, secure cookies, and no-store API responses remain active.
+- Office documents and PDFs above the configured 25 MB boundary are rejected.

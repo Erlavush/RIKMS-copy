@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
 
 class CommonApiController extends RikmsApiController
@@ -37,7 +38,7 @@ class CommonApiController extends RikmsApiController
     {
         $validated = $request->validate([
             'currentPassword' => ['required', 'string'],
-            'password' => ['required', 'string', 'min:12'],
+            'password' => ['required', 'string', PasswordRule::defaults()],
             'passwordConfirmation' => ['required', 'same:password'],
         ]);
         $user = $request->user();
@@ -56,7 +57,11 @@ class CommonApiController extends RikmsApiController
         });
         $this->audit->log('password changed', null, ['_event_type' => 'security'], $request);
 
-        return response()->json(['message' => 'Password changed successfully.', 'redirect' => $user->isSuperAdmin() ? '/admin/dashboard' : '/agency/dashboard']);
+        $redirect = $user->isSuperAdmin() && ! $user->hasEnabledTwoFactorAuthentication()
+            ? '/two-factor/setup'
+            : ($user->isSuperAdmin() ? '/admin/dashboard' : '/agency/dashboard');
+
+        return response()->json(['message' => 'Password changed successfully.', 'redirect' => $redirect]);
     }
 
     public function notifications(Request $request)

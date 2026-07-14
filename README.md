@@ -1,6 +1,6 @@
 # RIKMS
 
-RIKMS is a regional research and innovation knowledge-management application built with Laravel 12, React, TypeScript, Tailwind CSS 4, and Vite. It provides a public research repository, agency workspaces, controlled document access, structured reporting, and platform-wide moderation and administration.
+RIKMS is a regional research and innovation knowledge-management application built with Laravel 13, React, TypeScript, Tailwind CSS 4, and Vite. It provides a public research repository, agency workspaces, controlled document access, structured reporting, and platform-wide moderation and administration.
 
 ## Capabilities
 
@@ -13,11 +13,12 @@ RIKMS is a regional research and innovation knowledge-management application bui
 - Audited access requests and authorized private-file downloads
 - Super-administration for agencies, users, moderation, access monitoring, roles, settings, security summaries, and audit history
 - Server-side role enforcement and agency isolation
+- Mandatory TOTP two-factor authentication and one-use recovery codes for super administrators
 
 ## Requirements
 
 - PHP 8.3 or newer
-- PHP upload limits of at least 64 MB for the documented 50 MB research-file limit
+- PHP upload limits of at least 25 MB and a request-body limit of at least 27 MB
 - Composer 2
 - Node.js 22 or newer
 - SQLite for local demonstration, or PostgreSQL/MySQL for production
@@ -39,7 +40,7 @@ touch database/database.sqlite
 /home/eru/.local/bin/php artisan migrate:fresh --seed
 npm install
 npm run build
-/home/eru/.local/bin/php -d upload_max_filesize=64M -d post_max_size=70M artisan serve --host=127.0.0.1 --port=8000
+/home/eru/.local/bin/php -d upload_max_filesize=25M -d post_max_size=27M artisan serve --host=127.0.0.1 --port=8000
 ```
 
 The seeder creates a small valid demonstration PDF on the ignored private disk, so the seeded download and access-request flows are immediately testable. For active frontend development, run `npm run dev` in a second terminal.
@@ -77,7 +78,22 @@ The test configuration uses in-memory SQLite. File tests use a fake private disk
 
 ## Storage and safety
 
-Research documents are stored on the private local disk under `storage/app/private/research-documents` in local development. Browser requests never receive raw storage paths; files are delivered only by an authorized controller. `.env`, SQLite databases, generated builds, and private uploads are ignored by Git.
+Research documents use the dedicated private `documents` disk. It maps to `storage/app/private` locally and to a private Cloud Storage volume in Cloud Run. Browser requests never receive raw storage paths; files are delivered only by an authorized controller. Research uploads are PDF-only and capped at 25 MB. `.env`, SQLite databases, generated builds, and private uploads are ignored by Git.
+
+The production container fails closed on storage write errors, runs Nginx and PHP-FPM under supervision, excludes query strings from application access logs, and caches Laravel configuration only after runtime secrets are injected.
+
+## Google Cloud deployment
+
+`deploy-to-gcp.sh` provisions a dedicated runtime service account, Secret Manager bindings, a private Cloud Storage bucket, hardened Cloud SQL backups, forward-only migrations, secure session settings, and Cloud Run health probes. It requires an explicit project instead of embedding credentials:
+
+```bash
+PROJECT_ID=your-rikms-project \
+GCLOUD_BIN=/home/eru/.local/opt/google-cloud-sdk/bin/gcloud \
+PHP_BIN=/home/eru/.local/bin/php \
+./deploy-to-gcp.sh
+```
+
+Provision the first production administrator with `rikms:provision-admin`; pass its temporary password through the named environment variable or Secret Manager. `--disable-demo` invalidates the seeded demonstration credentials without printing the replacement password. The administrator must replace that temporary password and enroll a TOTP authenticator before any administration route or API becomes available.
 
 AI extraction remains mocked by design. Suggestions require human review and cannot approve or publish a record.
 
@@ -85,6 +101,7 @@ AI extraction remains mocked by design. Suggestions require human review and can
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Testing](docs/TESTING.md)
+- [Penetration-test baseline](docs/PENTEST_BASELINE.md)
 - [Security](docs/SECURITY.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Operations](docs/OPERATIONS.md)

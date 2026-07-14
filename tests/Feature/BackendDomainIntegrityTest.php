@@ -23,7 +23,7 @@ class BackendDomainIntegrityTest extends TestCase
     public function test_seeded_pending_queue_is_reviewable_and_seeded_requests_are_eligible(): void
     {
         Notification::fake();
-        $super = User::query()->where('role', 'super_admin')->firstOrFail();
+        $super = $this->withConfirmedTwoFactor(User::query()->where('role', 'super_admin')->firstOrFail());
 
         foreach (Document::query()->where('status', 'pending')->pluck('id') as $id) {
             $this->actingAs($super)->postJson('/api/rikms/admin/documents/'.$id.'/approve')->assertOk();
@@ -39,9 +39,9 @@ class BackendDomainIntegrityTest extends TestCase
 
     public function test_public_browse_switch_blocks_all_public_document_surfaces_and_zeros_counts(): void
     {
-        Storage::fake('local');
+        Storage::fake('documents');
         $document = Document::query()->where('status', 'published')->firstOrFail();
-        Storage::disk('local')->put('research-documents/public.pdf', 'pdf');
+        Storage::disk('documents')->put('research-documents/public.pdf', 'pdf');
         $document->update([
             'access_mode' => 'public_download', 'file_path' => 'research-documents/public.pdf',
             'original_filename' => 'public.pdf',
@@ -60,7 +60,7 @@ class BackendDomainIntegrityTest extends TestCase
     public function test_submission_recomputes_completion_and_ignores_blank_report_sections(): void
     {
         Notification::fake();
-        Storage::fake('local');
+        Storage::fake('documents');
         $user = User::query()->where('email', 'test@example.com')->firstOrFail();
 
         $response = $this->actingAs($user)->post('/api/rikms/documents', [
@@ -82,7 +82,7 @@ class BackendDomainIntegrityTest extends TestCase
     public function test_report_submission_requires_every_report_domain_section(): void
     {
         Notification::fake();
-        Storage::fake('local');
+        Storage::fake('documents');
         $user = User::query()->where('email', 'test@example.com')->firstOrFail();
         $response = $this->actingAs($user)->post('/api/rikms/documents', [
             'document_type' => 'terminal', 'submit_mode' => 'draft', 'year' => now()->year,
@@ -138,9 +138,9 @@ class BackendDomainIntegrityTest extends TestCase
 
     public function test_expired_embargo_rejects_access_requests(): void
     {
-        Storage::fake('local');
+        Storage::fake('documents');
         $document = Document::query()->where('status', 'published')->firstOrFail();
-        Storage::disk('local')->put('research-documents/embargo.pdf', 'pdf');
+        Storage::disk('documents')->put('research-documents/embargo.pdf', 'pdf');
         $document->update([
             'access_mode' => 'embargo_until_date', 'embargo_until' => now()->subDay(),
             'file_path' => 'research-documents/embargo.pdf', 'original_filename' => 'embargo.pdf',
@@ -154,12 +154,12 @@ class BackendDomainIntegrityTest extends TestCase
 
     public function test_inactive_agency_keeps_public_provenance_but_cannot_bypass_download_policy(): void
     {
-        Storage::fake('local');
+        Storage::fake('documents');
         $user = User::query()->where('email', 'test@example.com')->firstOrFail();
         $agency = $user->agency;
         $published = Document::query()->where('agency_id', $agency->id)->where('status', 'published')->firstOrFail();
         $draft = Document::query()->where('agency_id', $agency->id)->where('status', 'draft')->firstOrFail();
-        Storage::disk('local')->put('research-documents/private.pdf', 'private');
+        Storage::disk('documents')->put('research-documents/private.pdf', 'private');
         $draft->update(['file_path' => 'research-documents/private.pdf', 'original_filename' => 'private.pdf']);
         $agency->update(['is_active' => false]);
 
@@ -182,7 +182,7 @@ class BackendDomainIntegrityTest extends TestCase
 
     public function test_temporary_password_is_forced_to_rotate_before_protected_access(): void
     {
-        $admin = User::query()->where('role', 'super_admin')->firstOrFail();
+        $admin = $this->withConfirmedTwoFactor(User::query()->where('role', 'super_admin')->firstOrFail());
         $agency = Agency::query()->where('is_active', true)->firstOrFail();
         $response = $this->actingAs($admin)->postJson('/api/rikms/admin/users', [
             'name' => 'New Agency User', 'email' => 'new.user@example.org',

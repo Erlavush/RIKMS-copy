@@ -399,13 +399,13 @@ export function ResearchMetadata() {
                                 <input
                                     key={fileInputKey}
                                     type="file"
-                                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                    accept=".pdf,application/pdf"
                                     onChange={(event) => {
                                         const selected = event.target.files?.[0] ?? null;
-                                        if (selected && selected.size > 50 * 1024 * 1024) {
+                                        if (selected && selected.size > 25 * 1024 * 1024) {
                                             event.target.value = "";
                                             setSourceFile(null);
-                                            setSaveError("The source document must not exceed 50 MB.");
+                                            setSaveError("The source document must not exceed 25 MB.");
                                             return;
                                         }
                                         setSaveError("");
@@ -414,7 +414,7 @@ export function ResearchMetadata() {
                                     className="block w-full rounded-lg border border-gray-200 text-sm text-gray-600 file:mr-4 file:border-0 file:bg-blue-50 file:px-4 file:py-2.5 file:font-medium file:text-[#1E3A8A] hover:file:bg-blue-100"
                                 />
                                 <span className="mt-1 block text-xs text-gray-500">
-                                    PDF, DOC, or DOCX · maximum 50 MB. Replacements are versioned.
+                                    PDF only · maximum 25 MB. Replacements are versioned.
                                 </span>
                             </label>
                             {sourceFile && (

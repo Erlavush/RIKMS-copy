@@ -6,6 +6,7 @@ use App\Models\AccessRequest;
 use App\Models\AuditLog;
 use App\Models\Document;
 use App\Models\UserNotification;
+use App\Support\DocumentStorage;
 use Illuminate\Support\Facades\Storage;
 
 class RikmsPresenter
@@ -203,6 +204,6 @@ class RikmsPresenter
 
     private function fileExists(Document $document): bool
     {
-        return (bool) $document->file_path && Storage::disk('local')->exists($document->file_path);
+        return (bool) $document->file_path && Storage::disk(DocumentStorage::disk())->exists($document->file_path);
     }
 }

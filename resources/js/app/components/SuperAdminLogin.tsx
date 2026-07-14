@@ -31,7 +31,11 @@ export function SuperAdminLogin() {
         setLoading(true);
         setError(null);
         try {
-            const response = await postJson<{ redirect?: string }>("/login", { email, password, remember });
+            const response = await postJson<{ redirect?: string; twoFactorRequired?: boolean }>("/login", {
+                email,
+                password,
+                remember,
+            });
             window.location.assign(response.redirect || "/admin/dashboard");
         } catch (reason) {
             setError(reason instanceof Error ? reason.message : "Unable to sign in.");

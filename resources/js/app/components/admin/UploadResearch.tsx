@@ -665,7 +665,7 @@ function StepUploadResearch({
                         <Upload className="w-4 h-4" /> Browse File
                         <input
                             type="file"
-                            accept=".pdf,.docx,.doc"
+                            accept=".pdf,application/pdf"
                             className="hidden"
                             onChange={(e) => {
                                 if (e.target.files?.[0]) onFileSelect(e.target.files[0]);
@@ -674,9 +674,7 @@ function StepUploadResearch({
                     </label>
                     <div className="flex items-center justify-center gap-3 mt-5 text-xs text-gray-400">
                         <span className="px-2 py-0.5 bg-gray-100 rounded font-medium">PDF</span>·
-                        <span className="px-2 py-0.5 bg-gray-100 rounded font-medium">DOCX</span>·
-                        <span className="px-2 py-0.5 bg-gray-100 rounded font-medium">DOC</span>·
-                        <span className="text-gray-300">Max 50 MB</span>
+                        <span className="text-gray-300">Max 25 MB</span>
                     </div>
                 </div>
             ) : (
@@ -816,7 +814,7 @@ function StepDetailsReport({
                         <Upload className="w-4 h-4" /> Browse File
                         <input
                             type="file"
-                            accept=".pdf,.docx,.doc"
+                            accept=".pdf,application/pdf"
                             className="hidden"
                             onChange={(e) => {
                                 if (e.target.files?.[0]) onFileSelect(e.target.files[0]);
@@ -824,7 +822,7 @@ function StepDetailsReport({
                         />
                     </label>
                     <div className="flex items-center justify-center gap-3 mt-4 text-xs text-gray-400">
-                        <span>PDF</span>·<span>DOCX</span>·<span>DOC</span>·<span>Max 50 MB</span>
+                        <span>PDF</span>·<span>Max 25 MB</span>
                     </div>
                 </div>
             ) : (
@@ -3494,13 +3492,13 @@ export function UploadResearch() {
     };
 
     const handleFileSelected = (selected: File) => {
-        const extensionAllowed = /\.(pdf|doc|docx)$/i.test(selected.name);
+        const extensionAllowed = /\.pdf$/i.test(selected.name);
         if (!extensionAllowed) {
-            setSaveError("Choose a PDF, DOC, or DOCX file.");
+            setSaveError("Choose a PDF file.");
             return;
         }
-        if (selected.size > 50 * 1024 * 1024) {
-            setSaveError("The document must not exceed 50 MB.");
+        if (selected.size > 25 * 1024 * 1024) {
+            setSaveError("The document must not exceed 25 MB.");
             return;
         }
         setSaveError("");

@@ -44,8 +44,9 @@ export function ChangePassword() {
                 <div className="text-center">
                     <h1 className="mt-5 text-2xl font-bold text-[#1E3A8A]">Secure your account</h1>
                     <p className="mt-2 text-sm text-gray-500">
-                        You must replace the temporary password before accessing RIKMS. Use at least 12
-                        characters and do not reuse another account’s password.
+                        You must replace the temporary password before accessing RIKMS. Use at least 14
+                        characters with upper- and lowercase letters, a number, and a symbol. Do not reuse
+                        another account’s password.
                     </p>
                 </div>
                 {error && (
@@ -78,7 +79,7 @@ export function ChangePassword() {
                         <span className="relative block">
                             <input
                                 required
-                                minLength={12}
+                                minLength={14}
                                 type={showPasswords ? "text" : "password"}
                                 autoComplete="new-password"
                                 value={password}
@@ -99,7 +100,7 @@ export function ChangePassword() {
                         <span className="mb-1.5 block text-sm font-medium">Confirm new password</span>
                         <input
                             required
-                            minLength={12}
+                            minLength={14}
                             type={showPasswords ? "text" : "password"}
                             autoComplete="new-password"
                             value={confirmation}

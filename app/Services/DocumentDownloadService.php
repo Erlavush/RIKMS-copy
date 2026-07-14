@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\DownloadEvent;
 use App\Models\DownloadGrant;
 use App\Models\User;
+use App\Support\DocumentStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -41,11 +42,11 @@ class DocumentDownloadService
             return redirect()->away($document->external_url);
         }
 
-        abort_unless($document->file_path && Storage::disk('local')->exists($document->file_path), 404, 'The document file is not available.');
+        abort_unless($document->file_path && Storage::disk(DocumentStorage::disk())->exists($document->file_path), 404, 'The document file is not available.');
 
         $this->recordDownload($document, $grant, $request, $user);
 
-        return Storage::disk('local')->download(
+        return Storage::disk(DocumentStorage::disk())->download(
             $document->file_path,
             $document->original_filename ?: 'rikms-document-'.$document->id.'.pdf',
             ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']

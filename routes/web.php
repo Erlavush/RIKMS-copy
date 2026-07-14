@@ -6,21 +6,26 @@ use App\Http\Controllers\Api\AgencyApiController;
 use App\Http\Controllers\Api\CommonApiController;
 use App\Http\Controllers\Api\DocumentApiController;
 use App\Http\Controllers\Api\PublicApiController;
+use App\Http\Controllers\Api\TwoFactorSetupController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\SpaController;
+use App\Http\Controllers\TwoFactorChallengeController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/api/rikms/bootstrap', [PublicApiController::class, 'bootstrap'])->name('api.rikms.bootstrap');
-Route::get('/api/rikms/public/documents', [PublicApiController::class, 'index'])->name('api.rikms.public.documents.index');
-Route::get('/api/rikms/public/documents/{document}', [PublicApiController::class, 'show'])->whereNumber('document')->name('api.rikms.public.documents.show');
+Route::get('/api/rikms/bootstrap', [PublicApiController::class, 'bootstrap'])->middleware('throttle:public-read')->name('api.rikms.bootstrap');
+Route::get('/api/rikms/public/documents', [PublicApiController::class, 'index'])->middleware('throttle:public-read')->name('api.rikms.public.documents.index');
+Route::get('/api/rikms/public/documents/{document}', [PublicApiController::class, 'show'])->whereNumber('document')->middleware('throttle:public-read')->name('api.rikms.public.documents.show');
 Route::post('/api/rikms/public/documents/{document}/access-requests', [PublicApiController::class, 'requestAccess'])
     ->whereNumber('document')->middleware('throttle:public-access-request')->name('api.rikms.public.documents.access-requests');
 Route::get('/api/rikms/public/documents/{document}/download', [PublicApiController::class, 'download'])
-    ->whereNumber('document')->name('api.rikms.public.documents.download');
+    ->whereNumber('document')->middleware('throttle:public-download')->name('api.rikms.public.documents.download');
 
 Route::get('/login', SpaController::class)->name('login');
 Route::get('/admin/login', SpaController::class)->name('admin.login');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login')->name('login.store');
+Route::get('/two-factor-challenge', SpaController::class)->middleware('guest')->name('two-factor.challenge');
+Route::post('/two-factor-challenge', [TwoFactorChallengeController::class, 'store'])
+    ->middleware(['guest', 'throttle:two-factor-challenge'])->name('two-factor.challenge.store');
 Route::middleware('guest')->group(function (): void {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:login')->name('password.email');
     Route::get('/reset-password/{token}', SpaController::class)->name('password.reset');
@@ -31,13 +36,20 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->n
 Route::get('/dashboard', fn () => redirect(auth()->user()?->role === 'super_admin' ? '/admin/dashboard' : '/agency/dashboard'))
     ->middleware('auth')->name('dashboard');
 
-Route::middleware('auth')->prefix('api/rikms')->group(function (): void {
+Route::middleware(['auth', 'throttle:authenticated-api'])->prefix('api/rikms')->group(function (): void {
     Route::middleware('role:agency_admin,super_admin')->group(function (): void {
         Route::get('/me', [CommonApiController::class, 'me']);
         Route::post('/change-password', [CommonApiController::class, 'changePassword']);
         Route::get('/notifications', [CommonApiController::class, 'notifications']);
         Route::patch('/notifications/{notification}/read', [CommonApiController::class, 'readNotification'])->whereNumber('notification');
         Route::post('/notifications/read-all', [CommonApiController::class, 'readAll']);
+    });
+
+    Route::middleware(['role:super_admin', 'password.changed'])->prefix('two-factor')->group(function (): void {
+        Route::get('/', [TwoFactorSetupController::class, 'show']);
+        Route::post('/setup', [TwoFactorSetupController::class, 'start']);
+        Route::post('/confirm', [TwoFactorSetupController::class, 'confirm']);
+        Route::post('/recovery-codes', [TwoFactorSetupController::class, 'regenerate']);
     });
 
     Route::middleware(['role:agency_admin', 'password.changed'])->group(function (): void {
@@ -76,7 +88,7 @@ Route::middleware('auth')->prefix('api/rikms')->group(function (): void {
             ->whereNumber(['document', 'version'])->middleware('permission:documents.update');
     });
 
-    Route::middleware(['role:super_admin', 'password.changed'])->prefix('admin')->group(function (): void {
+    Route::middleware(['role:super_admin', 'password.changed', 'two-factor'])->prefix('admin')->group(function (): void {
         Route::get('/dashboard', [AdminApiController::class, 'dashboard']);
         Route::get('/agencies', [AdminApiController::class, 'agencies']);
         Route::post('/agencies', [AdminApiController::class, 'storeAgency']);
@@ -117,13 +129,15 @@ Route::get('/contact', SpaController::class)->name('contact');
 Route::get('/privacy', SpaController::class)->name('privacy');
 Route::get('/terms', SpaController::class)->name('terms');
 Route::get('/change-password', SpaController::class)->middleware(['auth', 'role:agency_admin,super_admin'])->name('password.change');
+Route::get('/two-factor/setup', SpaController::class)
+    ->middleware(['auth', 'role:super_admin', 'password.changed'])->name('two-factor.setup');
 
-Route::middleware(['auth', 'role:agency_admin'])->group(function (): void {
+Route::middleware(['auth', 'role:agency_admin', 'password.changed'])->group(function (): void {
     Route::redirect('/repository', '/agency/research')->name('repository');
     Route::redirect('/upload/new', '/agency/upload')->name('upload.new');
     Route::get('/agency/{any?}', SpaController::class)->where('any', '.*')->name('agency.spa');
 });
 
-Route::middleware(['auth', 'role:super_admin'])->group(function (): void {
+Route::middleware(['auth', 'role:super_admin', 'password.changed', 'two-factor'])->group(function (): void {
     Route::get('/admin/{any?}', SpaController::class)->where('any', '.*')->name('admin.spa');
 });

@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\PublicMetadataField;
 use App\Models\SdgTag;
 use App\Models\User;
+use App\Support\DocumentStorage;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -135,7 +136,7 @@ class DatabaseSeeder extends Seeder
                 'file_path' => $demoPath,
                 'original_filename' => 'rikms-demo-research.pdf',
                 'mime_type' => 'application/pdf',
-                'file_size' => Storage::disk('local')->size($demoPath),
+                'file_size' => Storage::disk(DocumentStorage::disk())->size($demoPath),
             ]);
         }
 
@@ -156,7 +157,7 @@ class DatabaseSeeder extends Seeder
     private function writeDemoPdf(): string
     {
         if (app()->runningUnitTests()) {
-            Storage::fake('local');
+            Storage::fake(DocumentStorage::disk());
         }
 
         $path = 'research-documents/rikms-demo-research.pdf';
@@ -181,7 +182,7 @@ class DatabaseSeeder extends Seeder
             $pdf .= sprintf('%010d 00000 n ', $offset)."\n";
         }
         $pdf .= "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{$xref}\n%%EOF\n";
-        Storage::disk('local')->put($path, $pdf);
+        Storage::disk(DocumentStorage::disk())->put($path, $pdf);
 
         return $path;
     }
@@ -209,12 +210,10 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($sdgs as [$number, $name, $short, $color]) {
-            SdgTag::create([
-                'number' => $number,
-                'name' => $name,
-                'short_name' => $short,
-                'color' => $color,
-            ]);
+            SdgTag::query()->updateOrCreate(
+                ['number' => $number],
+                ['name' => $name, 'short_name' => $short, 'color' => $color]
+            );
         }
     }
 

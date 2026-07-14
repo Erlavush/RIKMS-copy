@@ -68,8 +68,10 @@ class StoreRikmsDocumentRequest extends FormRequest
             'notify_access_requests' => ['nullable', 'boolean'],
             'notify_research_inquiries' => ['nullable', 'boolean'],
             'send_copy_to_agency_admin' => ['nullable', 'boolean'],
-            'document_file' => ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:51200'],
-            'highlight_file' => ['nullable', 'file', 'mimes:png,jpg,jpeg,pdf', 'max:10240'],
+            // PDF-only prevents the repository from becoming a distribution
+            // channel for macro-enabled office documents.
+            'document_file' => ['nullable', 'file', 'mimes:pdf', 'mimetypes:application/pdf', 'max:'.config('rikms.max_document_upload_kb')],
+            'highlight_file' => ['nullable', 'file', 'mimes:png,jpg,jpeg,pdf', 'max:'.config('rikms.max_highlight_upload_kb')],
 
             'metadata' => ['nullable', 'array'],
             'metadata.title' => ['nullable', 'string', 'max:500'],
