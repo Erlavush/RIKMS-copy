@@ -24,6 +24,8 @@ Example cron entry (replace the application path and PHP binary):
 
 Copy `docs/test-cohort.manifest.example.json` outside the repository and replace it with the leader plus exactly six tester/company identities. Export `RIKMS_TEST_PASSWORD_ADMIN` and `RIKMS_TEST_PASSWORD_1` through `_6`, then run `php artisan rikms:provision-test-cohort /private/path/cohort.json --disable-demo`. All seven accounts must rotate their temporary passwords; the super administrator must also enroll TOTP.
 
+The temporary OJT login selector shows only active agencies whose type is `Authorized Test Organization`. This hides legacy organizations from the sign-in interface without deleting them or revoking an already-authorized historical account. Remove the filter in `resources/js/app/lib/login-agencies.ts` when the cohort-only exercise ends.
+
 ## Monitoring
 
 Alert on elevated 5xx responses, queue failures, login abuse, storage exhaustion, database saturation, mail failures, and repeated authorization denials. Retain application logs and audit logs according to an approved privacy and records-retention policy.

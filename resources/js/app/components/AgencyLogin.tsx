@@ -3,9 +3,11 @@ import { AlertCircle, ArrowLeft, BookOpen, Building2, Eye, EyeOff, Loader2, Mail
 import { Link } from "react-router";
 import { useBootstrap } from "../hooks/useBootstrap";
 import { apiPost, firstValidationError } from "../lib/api";
+import { agenciesVisibleOnLogin } from "../lib/login-agencies";
 
 export function AgencyLogin() {
     const bootstrap = useBootstrap();
+    const loginAgencies = agenciesVisibleOnLogin(bootstrap.data?.agencies);
     const [agencyId, setAgencyId] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -160,7 +162,7 @@ export function AgencyLogin() {
                                         className="w-full rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm focus:border-[#1E3A8A] focus:outline-none focus:ring-2 focus:ring-blue-100"
                                     >
                                         <option value="">Use the agency assigned to my account</option>
-                                        {bootstrap.data?.agencies.map((agency) => (
+                                        {loginAgencies.map((agency) => (
                                             <option key={agency.id} value={agency.id}>
                                                 {agency.abbreviation} — {agency.name}
                                             </option>

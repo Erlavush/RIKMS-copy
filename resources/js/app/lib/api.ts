@@ -56,6 +56,7 @@ export interface PublicAgency {
     contactEmail?: string | null;
     contactPhone?: string | null;
     website?: string | null;
+    isActive?: boolean;
 }
 
 export type DocumentStatus = "draft" | "pending" | "published" | "rejected" | "archived";
