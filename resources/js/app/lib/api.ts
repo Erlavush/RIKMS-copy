@@ -115,6 +115,51 @@ export interface DocumentMetadata {
     aiConfidence?: number | null;
 }
 
+export interface AiDocumentSuggestions {
+    title: string;
+    abstract: string;
+    methodology: string;
+    review_of_related_literature: string;
+    theoretical_framework: string;
+    results_and_discussion: string;
+    keywords: string[];
+    authors: string[];
+    doi: string;
+    category: string;
+    executive_summary: string;
+    recommendations: string[];
+    suggested_sdgs: Array<{ number: number; reason: string; confidence: number }>;
+    overall_confidence: number;
+    evidence_pages: number[];
+}
+
+export interface DocumentAiAnalysis {
+    id: number;
+    status: "queued" | "processing" | "completed" | "failed" | "reviewed";
+    model: string;
+    promptVersion: string;
+    extractionMethod: string | null;
+    suggestions: AiDocumentSuggestions | null;
+    acceptedFields: string[];
+    confidence: number | null;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    reasoningTokens: number | null;
+    estimatedCostUsd: number | null;
+    errorMessage: string | null;
+    requestedBy: string | null;
+    reviewedBy: string | null;
+    createdAt: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    reviewedAt: string | null;
+}
+
+export interface DocumentAiAnalysisResponse {
+    enabled: boolean;
+    data: DocumentAiAnalysis | null;
+}
+
 export interface PerformanceRow {
     id?: number;
     target?: string;

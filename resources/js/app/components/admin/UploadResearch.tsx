@@ -44,7 +44,7 @@ import {
     Link2,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { SDG_DATA } from "../../data/mock-data";
+import { SDG_DATA } from "../../data/reference-data";
 import { apiPost, firstValidationError, type AgencySettingsData } from "../../lib/api";
 import { useApi } from "../../hooks/useApi";
 import { useAgencyContext } from "../../hooks/useAgencyContext";
@@ -170,7 +170,7 @@ type StepDef = { num: number; label: string; accent: string };
 const RESEARCH_STEPS: StepDef[] = [
     { num: 1, label: "Doc Type", accent: "#1E3A8A" },
     { num: 2, label: "Upload", accent: "#1E3A8A" },
-    { num: 3, label: "AI Metadata", accent: "#7C3AED" },
+    { num: 3, label: "Metadata Draft", accent: "#7C3AED" },
     { num: 4, label: "SDG Tagging", accent: "#0EA5E9" },
     { num: 5, label: "Access", accent: "#DC2626" },
     { num: 6, label: "Review", accent: "#059669" },
@@ -179,7 +179,7 @@ const RESEARCH_STEPS: StepDef[] = [
 const REPORT_STEPS: StepDef[] = [
     { num: 1, label: "Doc Type", accent: "#1E3A8A" },
     { num: 2, label: "Details", accent: "#1E3A8A" },
-    { num: 3, label: "AI Metadata", accent: "#7C3AED" },
+    { num: 3, label: "Metadata Draft", accent: "#7C3AED" },
     { num: 4, label: "Performance", accent: "#1E3A8A" },
     { num: 5, label: "PAP Class.", accent: "#1E3A8A" },
     { num: 6, label: "Financials", accent: "#1E3A8A" },
@@ -522,7 +522,7 @@ function StepDocType({ docType, setDocType }: { docType: DocType; setDocType: (d
                             Research Study — 6-Step Simplified
                         </p>
                         <p className="text-[11px] text-[#1E3A8A]/70">
-                            Upload → AI Metadata → SDG Tagging → Access Control → Review
+                            Upload → Metadata Draft → SDG Tagging → Access Control → Review
                         </p>
                     </div>
                 </div>
@@ -531,7 +531,7 @@ function StepDocType({ docType, setDocType }: { docType: DocType; setDocType: (d
                     <div>
                         <p className="text-xs font-bold text-[#7C3AED] mb-0.5">Reports — 9-Step Full Flow</p>
                         <p className="text-[11px] text-[#7C3AED]/70">
-                            Details → AI → Performance → PAP → Financials → Highlights → SDG → Review
+                            Details → Metadata → Performance → PAP → Financials → Highlights → SDG → Review
                         </p>
                     </div>
                 </div>
@@ -585,8 +585,8 @@ function StepDocType({ docType, setDocType }: { docType: DocType; setDocType: (d
                     <Brain className="w-4 h-4 text-[#1E3A8A] mt-0.5 shrink-0" />
                     <p className="text-sm text-[#1E3A8A]">
                         <span className="font-semibold">Research Study selected.</span> This simplified 6-step
-                        flow focuses on research submission: upload, AI metadata extraction, SDG tagging, and
-                        access control. No performance or financial fields required.
+                        flow focuses on research submission: upload, metadata review, SDG tagging, and access
+                        control. No performance or financial fields required.
                     </p>
                 </div>
             )}
@@ -738,9 +738,9 @@ function StepUploadResearch({
             <div className="flex items-start gap-3 p-4 bg-[#F5F3FF] border border-purple-200 rounded-xl">
                 <Brain className="w-4 h-4 text-[#7C3AED] mt-0.5 shrink-0" />
                 <p className="text-xs text-purple-800">
-                    <span className="font-semibold">Mocked metadata helper</span> — This helper does not read
-                    the document. It creates an editable starting point and never publishes or approves
-                    content.
+                    <span className="font-semibold">Human-reviewed metadata</span> — Complete the initial
+                    fields here. After the PDF is securely stored, Gemini runs separately and never publishes
+                    or approves content.
                 </p>
             </div>
         </div>
@@ -986,7 +986,7 @@ function StepAiMetadata({
                 step={stepNum}
                 total={total}
                 accentColor="#7C3AED"
-                subtitle="Use the mocked helper for an editable starting point, then verify every field yourself."
+                subtitle="Prepare the initial editable fields. Gemini suggestions become available after the draft and source PDF are securely stored."
             />
 
             {!analyzing && !ready && (
@@ -1002,15 +1002,15 @@ function StepAiMetadata({
                     <div className="text-center max-w-sm">
                         <p className="text-gray-800 font-semibold mb-1">Prepare an Editable Metadata Draft</p>
                         <p className="text-sm text-gray-500">
-                            This is a mocked helper: it does not inspect the selected file and will not
-                            publish, approve, or submit anything. It only prepares editable fields.
+                            Continue to an editable metadata draft. Real Gemini analysis runs after the source
+                            PDF is stored and remains subject to human review.
                         </p>
                     </div>
                     <button
                         onClick={onRunAnalysis}
                         className="inline-flex items-center gap-2 px-7 py-3 bg-[#7C3AED] text-white rounded-xl text-sm font-semibold hover:bg-[#7C3AED]/90 transition-all shadow-md hover:shadow-lg"
                     >
-                        <Brain className="w-4 h-4" /> Prepare demo metadata draft
+                        <Brain className="w-4 h-4" /> Prepare metadata draft
                     </button>
                 </div>
             )}
@@ -1026,9 +1026,7 @@ function StepAiMetadata({
                             </div>
                         </div>
                     </div>
-                    <p className="text-center text-gray-600 font-medium">
-                        Analyzing document… extracting metadata
-                    </p>
+                    <p className="text-center text-gray-600 font-medium">Preparing metadata review…</p>
                     <div className="max-w-md mx-auto space-y-3">
                         <div className="flex items-center justify-between text-sm">
                             <span className="text-gray-500">{aiStages[stage]}</span>
@@ -1062,7 +1060,8 @@ function StepAiMetadata({
                         <div className="flex-1">
                             <p className="text-sm text-green-700 font-semibold">Metadata draft prepared</p>
                             <p className="text-xs text-green-600">
-                                The mocked helper did not inspect the file. Verify and complete every field.
+                                These fields are human-controlled. Review the separate Gemini suggestions
+                                after saving the draft and before submission.
                             </p>
                         </div>
                         <button
@@ -3300,7 +3299,7 @@ export function UploadResearch() {
     const [year, setYear] = useState(String(CURRENT_YEAR));
     const agency = user.agencyName ?? "Your agency";
 
-    // ── Step 3 (shared) — AI Metadata
+    // ── Step 3 (shared) — human-controlled metadata draft
     const [metaAnalyzing, setMetaAnalyzing] = useState(false);
     const [metaReady, setMetaReady] = useState(false);
     const [metaProgress, setMetaProgress] = useState(0);
@@ -3369,25 +3368,24 @@ export function UploadResearch() {
         setAccessMode((current) => current ?? uploadAccessMode(agencySettings.data?.data.defaultAccessMode));
     }, [agencySettings.data]);
 
-    // ── AI Stages
+    // ── Metadata preparation stages
     const AI_STAGES = [
         "Parsing document structure…",
         "Extracting text blocks…",
         "Identifying metadata fields…",
-        "Running NLP analysis…",
+        "Preparing review fields…",
         "Classifying abstract & methodology…",
         "Finalizing extraction…",
     ];
 
-    const runAiAnalysis = () => {
-        const filenameTitle = file?.name.replace(/\.(pdf|docx?|PDF|DOCX?)$/, "").replace(/[-_]+/g, " ") ?? "";
+    const prepareMetadataDraft = () => {
         setMetaAnalyzing(false);
         setMetaProgress(100);
         setMetaStage(AI_STAGES.length - 1);
         setMetaReady(true);
         setMetadata((current) => ({
             ...current,
-            title: current.title || titleOverride || title2 || filenameTitle,
+            title: current.title || titleOverride || title2,
             abstract: current.abstract || description2,
         }));
     };
@@ -3419,7 +3417,7 @@ export function UploadResearch() {
     const researchValidation = [
         { label: "Document Type", ok: !!docType, step: 1 },
         { label: "File Uploaded", ok: !!file && uploadProg >= 100, step: 2 },
-        { label: "AI Metadata", ok: metaReady, step: 3 },
+        { label: "Metadata Draft", ok: metaReady, step: 3 },
         { label: "SDG Tags", ok: selectedSdgs.length > 0, step: 4 },
         { label: "Access Policy", ok: !!accessMode, step: 5 },
         ...(accessMode === "embargo" ? [{ label: "Embargo Date", ok: embargoDate.length > 0, step: 5 }] : []),
@@ -3431,7 +3429,7 @@ export function UploadResearch() {
         { label: "File Uploaded", ok: !!file && uploadProg >= 100, step: 2 },
         { label: "Report Title", ok: title2.trim().length > 0 || metadata.title.trim().length > 0, step: 2 },
         { label: "Quarter & Year", ok: !!quarter, step: 2 },
-        { label: "AI Metadata", ok: metaReady, step: 3 },
+        { label: "Metadata Draft", ok: metaReady, step: 3 },
         { label: "Performance Rows", ok: activeProjects.length > 0, step: 4 },
         { label: "PAP Categories", ok: selectedPAPs.length > 0, step: 5 },
         { label: "Budget Allocated", ok: alloc > 0, step: 6 },
@@ -3694,8 +3692,8 @@ export function UploadResearch() {
     }
 
     const subtitle = isResearch
-        ? "Submit research articles with editable, mocked metadata assistance"
-        : "Submit structured reports with editable, mocked metadata assistance";
+        ? "Submit research articles with review-gated Gemini metadata assistance"
+        : "Submit structured reports with review-gated Gemini metadata assistance";
 
     return (
         <div className="space-y-5">
@@ -3782,7 +3780,7 @@ export function UploadResearch() {
                                 publicFields={publicFields}
                                 expandedMeta={expandedMeta}
                                 setExpandedMeta={setExpandedMeta}
-                                onRunAnalysis={runAiAnalysis}
+                                onRunAnalysis={prepareMetadataDraft}
                                 onUpdateMeta={updateMeta}
                                 onTogglePublic={togglePublic}
                                 onSelectAll={() =>
@@ -3881,7 +3879,7 @@ export function UploadResearch() {
                                 publicFields={publicFields}
                                 expandedMeta={expandedMeta}
                                 setExpandedMeta={setExpandedMeta}
-                                onRunAnalysis={runAiAnalysis}
+                                onRunAnalysis={prepareMetadataDraft}
                                 onUpdateMeta={updateMeta}
                                 onTogglePublic={togglePublic}
                                 onSelectAll={() =>

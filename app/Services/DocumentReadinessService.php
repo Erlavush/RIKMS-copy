@@ -19,7 +19,7 @@ class DocumentReadinessService
             return [
                 1 => 'Doc Type',
                 2 => 'Details',
-                3 => 'AI Metadata',
+                3 => 'Metadata Draft',
                 4 => 'Performance',
                 5 => 'PAP',
                 6 => 'Financials',
@@ -32,7 +32,7 @@ class DocumentReadinessService
         return [
             1 => 'Doc Type',
             2 => 'Upload',
-            3 => 'AI Metadata',
+            3 => 'Metadata Draft',
             4 => 'SDG Tagging',
             5 => 'Access',
             6 => 'Review',

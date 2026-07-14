@@ -1,0 +1,14 @@
+{
+    "admin": {
+        "name": "Team B Leader",
+        "email": "leader@example.com"
+    },
+    "testers": [
+        { "name": "Tester 1", "email": "tester1@example.com", "company": "Test Company 1", "company_abbreviation": "TC1" },
+        { "name": "Tester 2", "email": "tester2@example.com", "company": "Test Company 2", "company_abbreviation": "TC2" },
+        { "name": "Tester 3", "email": "tester3@example.com", "company": "Test Company 3", "company_abbreviation": "TC3" },
+        { "name": "Tester 4", "email": "tester4@example.com", "company": "Test Company 4", "company_abbreviation": "TC4" },
+        { "name": "Tester 5", "email": "tester5@example.com", "company": "Test Company 5", "company_abbreviation": "TC5" },
+        { "name": "Tester 6", "email": "tester6@example.com", "company": "Test Company 6", "company_abbreviation": "TC6" }
+    ]
+}

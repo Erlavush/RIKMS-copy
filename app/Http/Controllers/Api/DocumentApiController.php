@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\DocumentSourceStored;
 use App\Http\Requests\StoreRikmsDocumentRequest;
 use App\Http\Requests\UpdateRikmsDocumentRequest;
 use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Services\AccessRequestService;
 use App\Services\AuditLogService;
+use App\Services\DocumentAiAnalysisService;
 use App\Services\DocumentDownloadService;
 use App\Services\DocumentPersistenceService;
 use App\Services\DocumentVersionService;
@@ -26,16 +28,31 @@ class DocumentApiController extends RikmsApiController
         private readonly RikmsPresenter $presenter,
         private readonly AuditLogService $audit,
         private readonly AccessRequestService $accessRequests,
+        private readonly DocumentAiAnalysisService $aiAnalyses,
     ) {}
 
     public function store(StoreRikmsDocumentRequest $request)
     {
         $document = $this->persistence->create($request->validated(), $request, $request->user());
         $this->audit->log($document->status === 'pending' ? 'document submitted' : 'document draft created', $document, [], $request);
+        $analysis = null;
+        if ($document->file_path && config('rikms.ai.enabled') && config('rikms.ai.auto_queue')) {
+            $analysis = $this->aiAnalyses->queue($document, $request->user());
+            $this->audit->log('document AI analysis queued', $document, [
+                'analysis_id' => $analysis->id,
+                'model' => $analysis->model,
+            ], $request);
+        }
+        if ($document->file_path) {
+            DocumentSourceStored::dispatch($document->id);
+        }
 
         return response()->json([
-            'message' => $document->status === 'pending' ? 'Document submitted for review.' : 'Draft saved.',
+            'message' => $analysis
+                ? 'Draft saved and AI analysis queued. Review the suggestions before submission.'
+                : ($document->status === 'pending' ? 'Document submitted for review.' : 'Draft saved.'),
             'documentId' => $document->id, 'status' => $document->status,
+            'analysisQueued' => $analysis !== null,
             'redirect' => '/agency/research', 'data' => $this->presenter->document($document, true),
         ], 201);
     }
@@ -62,6 +79,18 @@ class DocumentApiController extends RikmsApiController
         $oldFilePath = $document->file_path;
         $oldExternalUrl = $document->external_url;
         $document = $this->persistence->update($document, $request->validated(), $request, $request->user());
+        $analysis = null;
+        if ($oldFilePath !== $document->file_path && $document->file_path
+            && config('rikms.ai.enabled') && config('rikms.ai.auto_queue')) {
+            $analysis = $this->aiAnalyses->queue($document, $request->user());
+            $this->audit->log('document AI analysis queued', $document, [
+                'analysis_id' => $analysis->id,
+                'model' => $analysis->model,
+            ], $request);
+        }
+        if ($oldFilePath !== $document->file_path && $document->file_path) {
+            DocumentSourceStored::dispatch($document->id, true);
+        }
         $accessInvalidated = $oldStatus === 'published' || $oldAccessMode !== $document->access_mode
             || $oldFilePath !== $document->file_path || $oldExternalUrl !== $document->external_url;
         if ($accessInvalidated) {
@@ -70,7 +99,11 @@ class DocumentApiController extends RikmsApiController
         }
         $this->audit->log('document updated', $document, ['review_required' => $document->status === 'draft'], $request);
 
-        return response()->json(['message' => 'Document updated.', 'data' => $this->presenter->document($document, true)]);
+        return response()->json([
+            'message' => $analysis ? 'Document updated and AI analysis queued.' : 'Document updated.',
+            'analysisQueued' => $analysis !== null,
+            'data' => $this->presenter->document($document, true),
+        ]);
     }
 
     public function submit(Request $request, Document $document)

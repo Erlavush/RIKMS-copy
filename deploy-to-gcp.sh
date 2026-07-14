@@ -11,7 +11,7 @@ SERVICE_NAME="${SERVICE_NAME:-rikms-app}"
 SQL_INSTANCE_NAME="${SQL_INSTANCE_NAME:-rikms-db}"
 SQL_TIER="${SQL_TIER:-db-g1-small}"
 DB_NAME="${DB_NAME:-rikms}"
-DB_USER="${DB_USER:-rikms_app}"
+DB_USER="${DB_USER:-rikms-user}"
 SERVICE_ACCOUNT_NAME="${SERVICE_ACCOUNT_NAME:-rikms-runtime}"
 SCHEDULER_ACCOUNT_NAME="${SCHEDULER_ACCOUNT_NAME:-rikms-scheduler}"
 APP_URL="${APP_URL:-https://rikms.v3ra.net}"
@@ -41,9 +41,11 @@ PROJECT_NUMBER="$($GCLOUD_BIN projects describe "$PROJECT_ID" --format='value(pr
 BUILD_ACCOUNT_EMAIL="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 BUILD_ACCOUNT="projects/${PROJECT_ID}/serviceAccounts/${BUILD_ACCOUNT_EMAIL}"
 $GCLOUD_BIN services enable \
+    aiplatform.googleapis.com \
     artifactregistry.googleapis.com \
     cloudbuild.googleapis.com \
     cloudscheduler.googleapis.com \
+    documentai.googleapis.com \
     run.googleapis.com \
     secretmanager.googleapis.com \
     sqladmin.googleapis.com \
@@ -61,6 +63,14 @@ fi
 $GCLOUD_BIN projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role=roles/cloudsql.client \
+    --condition=None >/dev/null
+$GCLOUD_BIN projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
+    --role=roles/aiplatform.user \
+    --condition=None >/dev/null
+$GCLOUD_BIN projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
+    --role=roles/documentai.apiUser \
     --condition=None >/dev/null
 $GCLOUD_BIN projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${BUILD_ACCOUNT_EMAIL}" \
@@ -206,6 +216,16 @@ DOCUMENTS_DISK: documents
 DOCUMENTS_ROOT: /mnt/rikms-documents
 RIKMS_MAX_DOCUMENT_UPLOAD_KB: "25600"
 RIKMS_MAX_HIGHLIGHT_UPLOAD_KB: "10240"
+RIKMS_AI_ENABLED: "true"
+RIKMS_AI_AUTO_QUEUE: "true"
+GOOGLE_CLOUD_PROJECT: ${PROJECT_ID}
+VERTEX_AI_LOCATION: global
+VERTEX_AI_MODEL: gemini-3.1-flash-lite
+RIKMS_AI_PROMPT_VERSION: rikms-metadata-v1
+RIKMS_AI_TIMEOUT_SECONDS: "100"
+DOCUMENTS_GCS_BUCKET: ${DOCUMENTS_BUCKET}
+DOCUMENT_AI_LOCATION: us
+RIKMS_DRIVE_SYNC_ENABLED: "false"
 MAIL_MAILER: log
 MAIL_FROM_ADDRESS: noreply@rikms.gov.ph
 MAIL_FROM_NAME: RIKMS

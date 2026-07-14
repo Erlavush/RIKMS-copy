@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { ArrowLeft, Check, FileUp, Info, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, Brain, Check, FileUp, Info, Plus, RefreshCw, Save, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useApi } from "../../hooks/useApi";
-import { apiPatch, apiPost, firstValidationError, type ResearchDocument } from "../../lib/api";
-import { SDG_DATA } from "../../data/mock-data";
+import {
+    apiPatch,
+    apiPost,
+    firstValidationError,
+    type DocumentAiAnalysisResponse,
+    type ResearchDocument,
+} from "../../lib/api";
+import { SDG_DATA } from "../../data/reference-data";
 import { ErrorState, LoadingState } from "../shared/AsyncState";
 import { StatusBadge } from "../shared/StatusBadge";
 
@@ -77,6 +83,9 @@ export function ResearchMetadata() {
     const { id } = useParams();
     const navigate = useNavigate();
     const detail = useApi<DetailResponse>(id ? `/api/rikms/agency/documents/${id}` : null);
+    const aiAnalysis = useApi<DocumentAiAnalysisResponse>(
+        id ? `/api/rikms/agency/documents/${id}/ai-analysis` : null,
+    );
     const [form, setForm] = useState<MetadataForm>(EMPTY_FORM);
     const [publicFields, setPublicFields] = useState<string[]>(["title", "abstract"]);
     const [sdgs, setSdgs] = useState<number[]>([]);
@@ -99,6 +108,9 @@ export function ResearchMetadata() {
     const [highlightDescription, setHighlightDescription] = useState("");
     const [highlightFeatured, setHighlightFeatured] = useState(false);
     const [initializedId, setInitializedId] = useState<number | null>(null);
+    const [aiBusy, setAiBusy] = useState(false);
+    const [appliedAnalysisId, setAppliedAnalysisId] = useState<number | null>(null);
+    const [acceptedAiFields, setAcceptedAiFields] = useState<string[]>([]);
 
     useEffect(() => {
         const document = detail.data?.data;
@@ -143,6 +155,14 @@ export function ResearchMetadata() {
         setInitializedId(document.id);
     }, [detail.data, initializedId]);
 
+    useEffect(() => {
+        const status = aiAnalysis.data?.data?.status;
+        if (status !== "queued" && status !== "processing") return;
+
+        const timer = window.setInterval(() => void aiAnalysis.refresh(), 3000);
+        return () => window.clearInterval(timer);
+    }, [aiAnalysis, aiAnalysis.data?.data?.status]);
+
     function update<K extends keyof MetadataForm>(key: K, value: MetadataForm[K]) {
         setForm((current) => ({ ...current, [key]: value }));
     }
@@ -183,6 +203,61 @@ export function ResearchMetadata() {
         } finally {
             setSaving(false);
         }
+    }
+
+    async function queueAiAnalysis() {
+        if (!id) return;
+        setAiBusy(true);
+        setSaveError("");
+        try {
+            await apiPost(`/api/rikms/agency/documents/${id}/ai-analysis`);
+            toast.success("Gemini document analysis queued.");
+            await aiAnalysis.refresh();
+        } catch (error) {
+            const message = firstValidationError(error);
+            setSaveError(message);
+            toast.error(message);
+        } finally {
+            setAiBusy(false);
+        }
+    }
+
+    function applyAiSuggestions() {
+        const analysis = aiAnalysis.data?.data;
+        const suggestions = analysis?.suggestions;
+        if (!analysis || !suggestions) return;
+
+        setForm((current) => ({
+            ...current,
+            title: suggestions.title || current.title,
+            abstract: suggestions.abstract || current.abstract,
+            methodology: suggestions.methodology || current.methodology,
+            relatedLiterature: suggestions.review_of_related_literature || current.relatedLiterature,
+            theoreticalFramework: suggestions.theoretical_framework || current.theoreticalFramework,
+            resultsDiscussion: suggestions.results_and_discussion || current.resultsDiscussion,
+            keywords: suggestions.keywords.join(", ") || current.keywords,
+            authors: suggestions.authors.join(", ") || current.authors,
+            doi: suggestions.doi || current.doi,
+            category: suggestions.category || current.category,
+        }));
+        const suggestedSdgs = suggestions.suggested_sdgs.map((item) => item.number);
+        if (suggestedSdgs.length) setSdgs(suggestedSdgs);
+        const accepted = [
+            "title",
+            "abstract",
+            "methodology",
+            "review_of_related_literature",
+            "theoretical_framework",
+            "results_and_discussion",
+            "keywords",
+            "authors",
+            "doi",
+            "category",
+            ...(suggestedSdgs.length ? ["suggested_sdgs"] : []),
+        ];
+        setAppliedAnalysisId(analysis.id);
+        setAcceptedAiFields(accepted);
+        toast.success("Suggestions applied as an editable draft. Review every field before saving.");
     }
 
     async function save(event: React.FormEvent) {
@@ -262,6 +337,14 @@ export function ResearchMetadata() {
                 await apiPost(`/api/rikms/agency/documents/${id}`, multipart);
             } else {
                 await apiPatch(`/api/rikms/agency/documents/${id}`, requestPayload);
+            }
+            if (appliedAnalysisId && acceptedAiFields.length) {
+                await apiPost(`/api/rikms/agency/documents/${id}/ai-analysis/${appliedAnalysisId}/accept`, {
+                    accepted_fields: acceptedAiFields,
+                });
+                setAppliedAnalysisId(null);
+                setAcceptedAiFields([]);
+                await aiAnalysis.refresh();
             }
             toast.success("Research metadata saved. A version snapshot was created.");
             setSourceFile(null);
@@ -364,8 +447,8 @@ export function ResearchMetadata() {
                 <div className="flex gap-3 rounded-xl border border-purple-200 bg-purple-50 p-4 text-sm text-purple-800">
                     <Info className="h-5 w-5 shrink-0" />
                     <p>
-                        Some fields began as mocked AI-assisted metadata. They remain unpublished unless the
-                        record completes human review. Verify every field before submitting.
+                        Some fields were AI-assisted. They remain human-controlled and unpublished unless the
+                        record completes independent review. Verify every field before submitting.
                     </p>
                 </div>
             )}
@@ -378,6 +461,109 @@ export function ResearchMetadata() {
                     {saveError}
                 </div>
             )}
+
+            <section className="rounded-xl border border-purple-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div className="flex gap-3">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-700">
+                            <Brain className="h-5 w-5" />
+                        </span>
+                        <div>
+                            <h2 className="font-semibold text-[#1E3A8A]">Gemini metadata assistance</h2>
+                            <p className="mt-1 text-xs text-gray-500">
+                                Gemini 3.1 Flash-Lite produces reviewable suggestions. It cannot publish,
+                                submit, or change access permissions.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        disabled={
+                            !editable ||
+                            !document.originalFilename ||
+                            aiBusy ||
+                            aiAnalysis.data?.data?.status === "queued" ||
+                            aiAnalysis.data?.data?.status === "processing" ||
+                            aiAnalysis.data?.enabled === false
+                        }
+                        onClick={() => void queueAiAnalysis()}
+                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-purple-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-purple-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <RefreshCw className={`h-4 w-4 ${aiBusy ? "animate-spin" : ""}`} />
+                        {aiAnalysis.data?.data ? "Run new analysis" : "Analyze document"}
+                    </button>
+                </div>
+
+                {aiAnalysis.data?.enabled === false && (
+                    <p className="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+                        AI assistance has not been enabled for this deployment.
+                    </p>
+                )}
+                {aiAnalysis.data?.data && (
+                    <div className="mt-4 rounded-xl border border-purple-100 bg-purple-50/50 p-4 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-purple-900">
+                                Status: {aiAnalysis.data.data.status}
+                            </span>
+                            <span className="text-gray-500">Model: {aiAnalysis.data.data.model}</span>
+                            {aiAnalysis.data.data.confidence !== null && (
+                                <span className="text-gray-500">
+                                    Confidence: {Math.round(aiAnalysis.data.data.confidence * 100)}%
+                                </span>
+                            )}
+                            {aiAnalysis.data.data.estimatedCostUsd !== null && (
+                                <span className="text-gray-500">
+                                    Estimated model cost: ${aiAnalysis.data.data.estimatedCostUsd.toFixed(4)}
+                                </span>
+                            )}
+                        </div>
+                        {(aiAnalysis.data.data.status === "queued" ||
+                            aiAnalysis.data.data.status === "processing") && (
+                            <p className="mt-2 text-purple-800">Processing safely in the background…</p>
+                        )}
+                        {aiAnalysis.data.data.status === "failed" && (
+                            <p className="mt-2 text-red-700">{aiAnalysis.data.data.errorMessage}</p>
+                        )}
+                        {aiAnalysis.data.data.suggestions && (
+                            <div className="mt-3 space-y-3">
+                                <div>
+                                    <p className="font-medium text-gray-800">
+                                        Suggested title:{" "}
+                                        {aiAnalysis.data.data.suggestions.title || "Not found"}
+                                    </p>
+                                    <p className="mt-1 text-gray-600">
+                                        {aiAnalysis.data.data.suggestions.executive_summary}
+                                    </p>
+                                </div>
+                                {aiAnalysis.data.data.suggestions.suggested_sdgs.length > 0 && (
+                                    <p className="text-gray-600">
+                                        Suggested SDGs:{" "}
+                                        {aiAnalysis.data.data.suggestions.suggested_sdgs
+                                            .map((item) => item.number)
+                                            .join(", ")}
+                                    </p>
+                                )}
+                                {aiAnalysis.data.data.status === "completed" && (
+                                    <button
+                                        type="button"
+                                        disabled={!editable}
+                                        onClick={applyAiSuggestions}
+                                        className="inline-flex items-center gap-2 rounded-lg border border-purple-300 bg-white px-4 py-2 text-sm font-medium text-purple-800 hover:bg-purple-100 disabled:opacity-50"
+                                    >
+                                        <Sparkles className="h-4 w-4" /> Apply as editable draft
+                                    </button>
+                                )}
+                                {aiAnalysis.data.data.status === "reviewed" && (
+                                    <p className="font-medium text-green-700">
+                                        Human-reviewed by{" "}
+                                        {aiAnalysis.data.data.reviewedBy ?? "an authorized user"}.
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </section>
 
             <fieldset disabled={!editable || saving} className="space-y-6 disabled:opacity-70">
                 <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">

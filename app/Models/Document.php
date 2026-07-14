@@ -134,6 +134,16 @@ class Document extends Model
         return $this->hasOne(DocumentMetadata::class);
     }
 
+    public function aiAnalyses(): HasMany
+    {
+        return $this->hasMany(DocumentAiAnalysis::class);
+    }
+
+    public function latestAiAnalysis(): HasOne
+    {
+        return $this->hasOne(DocumentAiAnalysis::class)->latestOfMany();
+    }
+
     public function publicFields(): HasMany
     {
         return $this->hasMany(PublicMetadataField::class);

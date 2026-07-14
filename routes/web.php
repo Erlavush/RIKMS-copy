@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccessRequestApiController;
 use App\Http\Controllers\Api\AdminApiController;
 use App\Http\Controllers\Api\AgencyApiController;
 use App\Http\Controllers\Api\CommonApiController;
+use App\Http\Controllers\Api\DocumentAiAnalysisController;
 use App\Http\Controllers\Api\DocumentApiController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\TwoFactorSetupController;
@@ -68,6 +69,12 @@ Route::middleware(['auth', 'throttle:authenticated-api'])->prefix('api/rikms')->
             Route::patch('/settings', [AgencyApiController::class, 'updateSettings'])->middleware('permission:agency.manage');
 
             Route::get('/documents/{document}', [DocumentApiController::class, 'show'])->whereNumber('document')->middleware('permission:documents.view');
+            Route::get('/documents/{document}/ai-analysis', [DocumentAiAnalysisController::class, 'show'])
+                ->whereNumber('document')->middleware('permission:documents.view');
+            Route::post('/documents/{document}/ai-analysis', [DocumentAiAnalysisController::class, 'store'])
+                ->whereNumber('document')->middleware(['permission:documents.update', 'throttle:ai-analysis']);
+            Route::post('/documents/{document}/ai-analysis/{analysis}/accept', [DocumentAiAnalysisController::class, 'accept'])
+                ->whereNumber(['document', 'analysis'])->middleware(['permission:documents.update', 'throttle:ai-analysis']);
             Route::match(['put', 'patch'], '/documents/{document}', [DocumentApiController::class, 'update'])->whereNumber('document')->middleware('permission:documents.update');
             Route::delete('/documents/{document}', [DocumentApiController::class, 'archive'])->whereNumber('document')->middleware('permission:documents.archive');
             Route::post('/documents/{document}/submit', [DocumentApiController::class, 'submit'])->whereNumber('document')->middleware('permission:documents.submit');

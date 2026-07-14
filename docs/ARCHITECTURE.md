@@ -9,7 +9,9 @@ RIKMS is a Laravel 13 application with a React single-page interface compiled by
 - Super administrators manage platform-wide governance and moderate submitted documents.
 - Super-administration is gated by a confirmed TOTP authenticator after password authentication; recovery codes are encrypted, one-use, and rotated when consumed.
 - Uploaded documents remain on the dedicated private `documents` disk. Cloud Run mounts that disk from a private Cloud Storage bucket; local development maps it to `storage/app/private`. Downloads pass through an authorized controller and are logged.
-- AI metadata extraction is intentionally implemented as a deterministic mocked helper until an approved provider is selected. Its output is always a reviewable suggestion; it cannot submit, approve, publish, or bypass moderation.
+- AI document assistance uses Vertex AI `gemini-3.1-flash-lite`. Embedded PDF text is extracted locally; a configured Document AI processor handles scanned OCR, with Gemini PDF understanding as the fallback. Every run is queued, schema-validated, cost-tracked, and stored separately from authoritative metadata.
+- AI-enabled uploads remain drafts. A user must apply, edit, save, and explicitly mark accepted suggestion fields before normal submission and independent moderation.
+- Successful source-file creation and replacement emit `DocumentSourceStored`. The teammate-owned Google Drive mirror must consume that event asynchronously; Drive is a secondary copy and never the authorization or download source of truth.
 
 ## Document lifecycle
 
@@ -38,4 +40,8 @@ The session-authenticated JSON API lives under `/api/rikms`. Lists use `{ "data"
 
 ## Data and file integrity
 
-Multi-table writes run in database transactions. File replacement and deletion are coordinated with record changes so failures do not leave orphaned files. Demo records do not imply downloadable files unless a fixture exists.
+Multi-table writes run in database transactions. File replacement and deletion are coordinated with record changes so failures do not leave orphaned files.
+
+## AI trust boundary
+
+PDF content is untrusted input. System instructions prohibit following commands embedded in documents, structured output is validated server-side, and the model has no tools or database permissions. RIKMS stores the model ID, prompt version, extraction method, token counts, estimated cost, confidence, accepted fields, and reviewer; it does not store extracted full text in the analysis audit row.

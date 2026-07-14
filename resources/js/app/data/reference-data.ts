@@ -20,6 +20,6 @@ const STANDARD_SDG_DATA: Sdg[] = [
     { number: 17, title: "Partnerships for the Goals", color: "#19486A" },
 ];
 
-// The upload wizard needs these standard labels synchronously. Repository records,
-// counts, agencies, and statistics are always fetched from the sanitized API.
+// The upload wizard needs these stable UN SDG labels synchronously. Repository
+// records, counts, agencies, and statistics always come from the API.
 export const SDG_DATA = STANDARD_SDG_DATA;

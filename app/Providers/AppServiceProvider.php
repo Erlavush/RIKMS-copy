@@ -63,6 +63,13 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('authenticated-api', fn (Request $request) => Limit::perMinute(120)->by('authenticated-api|'.$request->user()?->getAuthIdentifier())
         );
 
+        RateLimiter::for('ai-analysis', function (Request $request) {
+            return [
+                Limit::perHour(10)->by('ai-analysis-user|'.$request->user()?->getAuthIdentifier()),
+                Limit::perHour(30)->by('ai-analysis-agency|'.$request->user()?->agency_id),
+            ];
+        });
+
         RateLimiter::for('two-factor-challenge', function (Request $request) {
             return [
                 Limit::perMinute(5)->by('two-factor-user|'.$request->session()->get('login.id').'|'.$request->ip()),

@@ -6,7 +6,7 @@ RIKMS is a regional research and innovation knowledge-management application bui
 
 - Public discovery of published research, participating agencies, categories, and SDG alignment
 - Agency-scoped dashboards, repository management, upload and draft workflows
-- Reviewable mocked AI metadata suggestions that never auto-submit or auto-publish
+- Review-gated Gemini 3.1 Flash-Lite metadata suggestions with tracked usage and human acceptance
 - Research metadata, public-field selection, SDG tags, PAP classification, performance, financial, and highlight data
 - Formal submission, moderation, rejection, publication, archive, and restore transitions
 - Public, request-controlled, restricted, embargoed, and external-link access policies
@@ -37,13 +37,13 @@ cp .env.example .env
 /home/eru/.local/bin/php /home/eru/.local/bin/composer install
 /home/eru/.local/bin/php artisan key:generate
 touch database/database.sqlite
-/home/eru/.local/bin/php artisan migrate:fresh --seed
+/home/eru/.local/bin/php artisan migrate
 npm install
 npm run build
 /home/eru/.local/bin/php -d upload_max_filesize=25M -d post_max_size=27M artisan serve --host=127.0.0.1 --port=8000
 ```
 
-The seeder creates a small valid demonstration PDF on the ignored private disk, so the seeded download and access-request flows are immediately testable. For active frontend development, run `npm run dev` in a second terminal.
+Normal local and production setup does not create synthetic research papers or fixed demo credentials. Automated tests retain isolated in-memory fixtures. For active frontend development, run `npm run dev` in a second terminal.
 
 Keep a queue worker running for mail and digest delivery, and run the Laravel scheduler every minute:
 
@@ -54,16 +54,9 @@ Keep a queue worker running for mail and digest delivery, and run the Laravel sc
 
 `schedule:work` is convenient locally. Production should invoke `php artisan schedule:run` every minute through cron or the hosting scheduler. The weekly agency digest runs Monday at 08:00 Asia/Manila for agencies that enable it.
 
-## Demo accounts
-
-These credentials exist only after running the demo seeder and must never be enabled in production.
-
-| Role | Email | Password |
-|---|---|---|
-| Agency administrator | `test@example.com` | `password` |
-| Super administrator | `admin@rikms.gov.ph` | `password` |
-
 Accounts created or password-reset by an administrator are forced through the password-change screen before any protected workspace can be used.
+
+The authorized penetration-test cohort is provisioned from a private manifest with `rikms:provision-test-cohort`. Passwords come from environment variables and are never stored in the manifest or printed. The committed example is `docs/test-cohort.manifest.example.json`.
 
 ## Quality checks
 
@@ -95,7 +88,7 @@ PHP_BIN=/home/eru/.local/bin/php \
 
 Provision the first production administrator with `rikms:provision-admin`; pass its temporary password through the named environment variable or Secret Manager. `--disable-demo` invalidates the seeded demonstration credentials without printing the replacement password. The administrator must replace that temporary password and enroll a TOTP authenticator before any administration route or API becomes available.
 
-AI extraction remains mocked by design. Suggestions require human review and cannot approve or publish a record.
+Gemini analysis is asynchronous and server-side through Vertex AI. It extracts embedded PDF text locally when possible, optionally uses Document AI OCR when a processor is configured, and otherwise uses Gemini PDF understanding. Suggestions require explicit human review and cannot approve, submit, publish, or change access policy.
 
 ## Documentation
 

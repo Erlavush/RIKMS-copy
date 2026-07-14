@@ -5,6 +5,7 @@
 - Run `php artisan schedule:run` every minute. RIKMS schedules `rikms:weekly-digests` for Monday at 08:00 in `Asia/Manila`; `withoutOverlapping` prevents duplicate concurrent runs.
 - Keep at least one `php artisan queue:work --tries=3` process supervised and restart it after each release. The weekly digest email is queued, so running the scheduler without a worker is insufficient.
 - Monitor failed jobs and retry only after the underlying cause is understood.
+- AI jobs use the `ai` queue and record status in `document_ai_analyses`. A failed job never changes document metadata. Inspect configuration and IAM before retrying; do not log source text or OAuth tokens.
 
 Example cron entry (replace the application path and PHP binary):
 
@@ -17,6 +18,11 @@ Example cron entry (replace the application path and PHP binary):
 - Back up the production database and private document store at least daily.
 - Encrypt backups, restrict access, and define retention with the system owner.
 - Perform a restore drill at least quarterly. A backup is not considered valid until restoration is verified.
+- Before removing old seeded papers, create a Cloud SQL backup, preview with `php artisan rikms:purge-demo-data`, then execute with `--execute --backup-reference=<backup-id>`. The command matches only known fixture titles and patterns.
+
+## Authorized test cohort
+
+Copy `docs/test-cohort.manifest.example.json` outside the repository and replace it with the leader plus exactly six tester/company identities. Export `RIKMS_TEST_PASSWORD_ADMIN` and `RIKMS_TEST_PASSWORD_1` through `_6`, then run `php artisan rikms:provision-test-cohort /private/path/cohort.json --disable-demo`. All seven accounts must rotate their temporary passwords; the super administrator must also enroll TOTP.
 
 ## Monitoring
 

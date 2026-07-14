@@ -21,6 +21,14 @@ class DatabaseSeeder extends Seeder
             throw new \RuntimeException('The RIKMS demo seeder is disabled in production.');
         }
 
+        $this->seedSdgs();
+
+        // Synthetic papers and fixed demo credentials exist only as isolated
+        // automated-test fixtures. Normal local/staging seeding stays empty.
+        if (! app()->runningUnitTests()) {
+            return;
+        }
+
         $agency = Agency::create([
             'name' => 'Department of Science and Technology - Region XI',
             'abbreviation' => 'DOST XI',
@@ -48,8 +56,6 @@ class DatabaseSeeder extends Seeder
             'role' => 'super_admin',
             'agency_id' => null,
         ]);
-
-        $this->seedSdgs();
 
         $samples = [
             [

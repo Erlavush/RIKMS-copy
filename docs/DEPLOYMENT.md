@@ -9,6 +9,8 @@ The Cloud Run runtime identity needs only:
 - `roles/cloudsql.client` on the project
 - `roles/secretmanager.secretAccessor` on the RIKMS secrets
 - `roles/storage.objectUser` on the private RIKMS document bucket
+- `roles/aiplatform.user` for Gemini analysis
+- `roles/documentai.apiUser` only when the OCR processor is configured
 
 Do not run RIKMS with the default Compute Engine service account or a project-level Editor role.
 
@@ -33,6 +35,8 @@ PHP_BIN=/home/eru/.local/bin/php \
 ```
 
 It builds from source, deploys a least-privilege runtime, injects `APP_KEY` and `DB_PASSWORD` from Secret Manager, mounts durable private storage, configures startup/liveness probes, and executes `php artisan migrate --force` as a Cloud Run job. It never runs `migrate:fresh` or a demonstration seeder.
+
+The deployment enables Vertex AI, configures `gemini-3.1-flash-lite` on the global endpoint, and passes the private bucket name so large PDFs can be referenced through `gs://` without copying file bytes into application logs or browser responses. Document AI is optional until `DOCUMENT_AI_PROCESSOR_ID` is configured.
 
 For a deliberate database-password rotation, pass `RIKMS_DB_PASSWORD` for one execution. Do not place that value in shell history, `.env`, source control, or CI logs.
 

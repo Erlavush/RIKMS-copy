@@ -45,6 +45,11 @@ class DocumentPersistenceService
                 $title = trim((string) ($metadata['title'] ?? $data['title'] ?? '')) ?: 'Untitled research record';
                 $submitting = ($data['submit_mode'] ?? 'draft') === 'submit';
                 $file = $request->file('document_file');
+                // A newly uploaded source must remain editable until a human
+                // reviews the queued AI suggestions. AI never auto-submits.
+                if ($file && config('rikms.ai.enabled') && config('rikms.ai.auto_queue')) {
+                    $submitting = false;
+                }
 
                 $document = Document::create([
                     'agency_id' => $user->agency_id,

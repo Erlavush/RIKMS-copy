@@ -23,6 +23,8 @@ Do not open a public issue containing sensitive details. Report vulnerabilities 
 - A 14-character mixed-case, number, and symbol password policy for new and changed credentials
 - Per-IP, per-account, per-user, access-request, and download throttling
 - Mandatory confirmed TOTP for super administrators, five-minute login challenges, replay-resistant code verification, and rotating one-use recovery codes
+- Server-side Vertex AI authentication through the dedicated Cloud Run identity; no AI API key or bearer token is exposed to the browser
+- Per-user and per-agency AI rate limits, queued execution, validated JSON schemas, prompt-injection isolation, and mandatory human review
 
 Client-side route guards and hidden buttons are usability features only. They are never treated as authorization.
 
@@ -42,6 +44,7 @@ Client-side route guards and hidden buttons are usability features only. They ar
 - Cloud SQL automated backups, point-in-time recovery, deletion protection, and restore drills are enabled
 - The Cloud Run service uses a dedicated runtime identity rather than the default Compute Editor service account
 - Production host validation accepts only the canonical RIKMS hostname and internal health-probe hosts; the default Cloud Run hostname is not an alternate application entry point
+- The runtime service account has only `aiplatform.user` and optional `documentai.apiUser` for AI processing; Drive credentials remain outside this integration until the separate mirror is reviewed
 
 ## Security acceptance rule
 
