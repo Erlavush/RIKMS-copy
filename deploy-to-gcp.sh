@@ -1,85 +1,320 @@
 #!/usr/bin/env bash
 
-# Exit immediately if a command exits with a non-zero status
-set -e
+set -Eeuo pipefail
 
-# ==========================================
-# Configuration (Change as needed)
-# ==========================================
-PROJECT_ID="bustling-art-498816-s8"
-REGION="asia-east1" # Choose a region close to your team (e.g., asia-east1, us-central1)
-SERVICE_NAME="rikms-app"
-SQL_INSTANCE_NAME="rikms-db"
-DB_NAME="rikms"
-DB_USER="rikms-user"
-DB_PASSWORD="SuperStrongPassword123!" # Change this!
+# Production deployment entrypoint. This script never stores application or
+# database secrets in the repository or in Cloud Run's plain-text env block.
+: "${PROJECT_ID:?Set PROJECT_ID to the dedicated GCP project id}"
 
-GCLOUD_BIN="/home/eru/.local/opt/google-cloud-sdk/bin/gcloud"
+REGION="${REGION:-asia-east1}"
+SERVICE_NAME="${SERVICE_NAME:-rikms-app}"
+SQL_INSTANCE_NAME="${SQL_INSTANCE_NAME:-rikms-db}"
+SQL_TIER="${SQL_TIER:-db-g1-small}"
+DB_NAME="${DB_NAME:-rikms}"
+DB_USER="${DB_USER:-rikms_app}"
+SERVICE_ACCOUNT_NAME="${SERVICE_ACCOUNT_NAME:-rikms-runtime}"
+SCHEDULER_ACCOUNT_NAME="${SCHEDULER_ACCOUNT_NAME:-rikms-scheduler}"
+APP_URL="${APP_URL:-https://rikms.v3ra.net}"
+APP_KEY_SECRET="${APP_KEY_SECRET:-rikms-app-key}"
+DB_PASSWORD_SECRET="${DB_PASSWORD_SECRET:-rikms-db-password}"
+DOCUMENTS_BUCKET="${DOCUMENTS_BUCKET:-${PROJECT_ID}-rikms-private}"
+GCLOUD_BIN="${GCLOUD_BIN:-gcloud}"
+PHP_BIN="${PHP_BIN:-php}"
 
-echo "======================================================="
-echo " Starting GCP Deployment Preparation for RIKMS         "
-echo "======================================================="
+SERVICE_ACCOUNT="${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+SCHEDULER_ACCOUNT="${SCHEDULER_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+INSTANCE_CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE_NAME}"
+APP_HOST="${APP_URL#*://}"
+APP_HOST="${APP_HOST%%/*}"
+APP_HOST_REGEX="${APP_HOST//./\\.}"
 
-# Ensure user is logged in
-echo "Checking gcloud authentication..."
-if ! "$GCLOUD_BIN" auth list --filter=status:ACTIVE --format="value(account)" | grep -q "@"; then
-    echo "ERROR: You need to authenticate first."
-    echo "Please run: gcloud auth login"
+command -v "$GCLOUD_BIN" >/dev/null 2>&1 || { echo "gcloud is not available" >&2; exit 1; }
+command -v "$PHP_BIN" >/dev/null 2>&1 || { echo "php is not available" >&2; exit 1; }
+
+if [[ -z "$($GCLOUD_BIN auth list --filter=status:ACTIVE --format='value(account)' --limit=1)" ]]; then
+    echo "Authenticate gcloud before deploying." >&2
     exit 1
 fi
 
-echo "Setting active project to: $PROJECT_ID"
-"$GCLOUD_BIN" config set project "$PROJECT_ID"
-
-
-# Enable Google Cloud Services APIs
-echo "Enabling required Google Cloud APIs..."
-"$GCLOUD_BIN" services enable \
-    run.googleapis.com \
-    sqladmin.googleapis.com \
+$GCLOUD_BIN config set project "$PROJECT_ID" >/dev/null
+PROJECT_NUMBER="$($GCLOUD_BIN projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+BUILD_ACCOUNT_EMAIL="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+BUILD_ACCOUNT="projects/${PROJECT_ID}/serviceAccounts/${BUILD_ACCOUNT_EMAIL}"
+$GCLOUD_BIN services enable \
     artifactregistry.googleapis.com \
     cloudbuild.googleapis.com \
-    secretmanager.googleapis.com
+    cloudscheduler.googleapis.com \
+    run.googleapis.com \
+    secretmanager.googleapis.com \
+    sqladmin.googleapis.com \
+    storage.googleapis.com
 
-# Create database instance if not already existing
-echo "Checking if Cloud SQL database instance '$SQL_INSTANCE_NAME' exists..."
-if ! "$GCLOUD_BIN" sql instances list --format="value(name)" | grep -q "^$SQL_INSTANCE_NAME$"; then
-    echo "Cloud SQL instance '$SQL_INSTANCE_NAME' not found. Creating a lightweight DB (db-f1-micro) for testing..."
-    "$GCLOUD_BIN" sql instances create "$SQL_INSTANCE_NAME" \
+if ! $GCLOUD_BIN iam service-accounts describe "$SERVICE_ACCOUNT" >/dev/null 2>&1; then
+    $GCLOUD_BIN iam service-accounts create "$SERVICE_ACCOUNT_NAME" \
+        --display-name="RIKMS Cloud Run runtime"
+fi
+if ! $GCLOUD_BIN iam service-accounts describe "$SCHEDULER_ACCOUNT" >/dev/null 2>&1; then
+    $GCLOUD_BIN iam service-accounts create "$SCHEDULER_ACCOUNT_NAME" \
+        --display-name="RIKMS scheduled job invoker"
+fi
+
+$GCLOUD_BIN projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
+    --role=roles/cloudsql.client \
+    --condition=None >/dev/null
+$GCLOUD_BIN projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${BUILD_ACCOUNT_EMAIL}" \
+    --role=roles/run.builder \
+    --condition=None >/dev/null
+# New projects may grant Editor to the default compute identity. The identity is
+# build-only for RIKMS and must not retain that project-wide role.
+$GCLOUD_BIN projects remove-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${BUILD_ACCOUNT_EMAIL}" \
+    --role=roles/editor \
+    --condition=None >/dev/null 2>&1 || true
+
+if ! $GCLOUD_BIN storage buckets describe "gs://${DOCUMENTS_BUCKET}" >/dev/null 2>&1; then
+    $GCLOUD_BIN storage buckets create "gs://${DOCUMENTS_BUCKET}" \
+        --location="$REGION" \
+        --uniform-bucket-level-access \
+        --public-access-prevention
+fi
+$GCLOUD_BIN storage buckets update "gs://${DOCUMENTS_BUCKET}" \
+    --public-access-prevention \
+    --uniform-bucket-level-access >/dev/null
+$GCLOUD_BIN storage buckets add-iam-policy-binding "gs://${DOCUMENTS_BUCKET}" \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
+    --role=roles/storage.objectUser >/dev/null
+# Bucket creation adds project convenience grants. They are broader than the
+# explicit RIKMS runtime binding and can let project viewers read documents.
+while read -r member role; do
+    $GCLOUD_BIN storage buckets remove-iam-policy-binding "gs://${DOCUMENTS_BUCKET}" \
+        --member="$member" \
+        --role="$role" >/dev/null 2>&1 || true
+done <<EOF
+projectViewer:${PROJECT_ID} roles/storage.legacyBucketReader
+projectViewer:${PROJECT_ID} roles/storage.legacyObjectReader
+projectEditor:${PROJECT_ID} roles/storage.legacyObjectOwner
+projectOwner:${PROJECT_ID} roles/storage.legacyObjectOwner
+projectEditor:${PROJECT_ID} roles/storage.legacyBucketOwner
+projectOwner:${PROJECT_ID} roles/storage.legacyBucketOwner
+EOF
+
+if ! $GCLOUD_BIN sql instances describe "$SQL_INSTANCE_NAME" >/dev/null 2>&1; then
+    $GCLOUD_BIN sql instances create "$SQL_INSTANCE_NAME" \
         --database-version=POSTGRES_15 \
-        --tier=db-f1-micro \
-        --region="$REGION"
-    
-    echo "Creating database '$DB_NAME'..."
-    "$GCLOUD_BIN" sql databases create "$DB_NAME" --instance="$SQL_INSTANCE_NAME"
+        --tier="$SQL_TIER" \
+        --region="$REGION" \
+        --availability-type=zonal \
+        --storage-type=SSD \
+        --storage-size=10 \
+        --storage-auto-increase \
+        --backup-start-time=18:00 \
+        --enable-point-in-time-recovery \
+        --retained-backups-count=7 \
+        --retained-transaction-log-days=7 \
+        --deletion-protection
+fi
+$GCLOUD_BIN sql instances patch "$SQL_INSTANCE_NAME" \
+    --backup-start-time=18:00 \
+    --enable-point-in-time-recovery \
+    --retained-backups-count=7 \
+    --retained-transaction-log-days=7 \
+    --storage-auto-increase \
+    --ssl-mode=TRUSTED_CLIENT_CERTIFICATE_REQUIRED \
+    --retain-backups-on-delete \
+    --deletion-protection \
+    --quiet >/dev/null
 
-    echo "Creating database user '$DB_USER'..."
-    "$GCLOUD_BIN" sql users create "$DB_USER" --instance="$SQL_INSTANCE_NAME" --password="$DB_PASSWORD"
-else
-    echo "Cloud SQL instance '$SQL_INSTANCE_NAME' already exists."
+if ! $GCLOUD_BIN sql databases describe "$DB_NAME" --instance="$SQL_INSTANCE_NAME" >/dev/null 2>&1; then
+    $GCLOUD_BIN sql databases create "$DB_NAME" --instance="$SQL_INSTANCE_NAME"
 fi
 
-# Secret Manager for Laravel App Key
-echo "Creating application key secret..."
-APP_KEY=$(php artisan key:generate --show)
-if ! "$GCLOUD_BIN" secrets list --format="value(name)" | grep -q "^RIKMS_APP_KEY$"; then
-    "$GCLOUD_BIN" secrets create RIKMS_APP_KEY --replication-policy="automatic"
-    echo -n "$APP_KEY" | "$GCLOUD_BIN" secrets versions add RIKMS_APP_KEY --data-file=-
-else
-    echo "Secret RIKMS_APP_KEY already exists."
-fi
+ensure_secret() {
+    local name="$1" value="$2"
+    if ! $GCLOUD_BIN secrets describe "$name" >/dev/null 2>&1; then
+        $GCLOUD_BIN secrets create "$name" --replication-policy=automatic
+        printf '%s' "$value" | $GCLOUD_BIN secrets versions add "$name" --data-file=- >/dev/null
+    fi
+    $GCLOUD_BIN secrets add-iam-policy-binding "$name" \
+        --member="serviceAccount:${SERVICE_ACCOUNT}" \
+        --role=roles/secretmanager.secretAccessor >/dev/null
+}
 
-# Build and Deploy using Google Cloud Build and Cloud Run
-echo "Building container and deploying to Google Cloud Run..."
-"$GCLOUD_BIN" run deploy "$SERVICE_NAME" \
-    --source . \
-    --region "$REGION" \
+APP_KEY="$($PHP_BIN artisan key:generate --show)"
+ensure_secret "$APP_KEY_SECRET" "$APP_KEY"
+unset APP_KEY
+
+DB_SECRET_CREATED=false
+if [[ -n "${RIKMS_DB_PASSWORD:-}" ]]; then
+    DB_PASSWORD="$RIKMS_DB_PASSWORD"
+    if $GCLOUD_BIN secrets describe "$DB_PASSWORD_SECRET" >/dev/null 2>&1; then
+        printf '%s' "$DB_PASSWORD" | $GCLOUD_BIN secrets versions add "$DB_PASSWORD_SECRET" --data-file=- >/dev/null
+    else
+        DB_SECRET_CREATED=true
+        ensure_secret "$DB_PASSWORD_SECRET" "$DB_PASSWORD"
+    fi
+elif $GCLOUD_BIN secrets describe "$DB_PASSWORD_SECRET" >/dev/null 2>&1; then
+    DB_PASSWORD="$($GCLOUD_BIN secrets versions access latest --secret="$DB_PASSWORD_SECRET")"
+else
+    DB_PASSWORD="$(openssl rand -base64 36 | tr -d '\n')"
+    DB_SECRET_CREATED=true
+    ensure_secret "$DB_PASSWORD_SECRET" "$DB_PASSWORD"
+fi
+ensure_secret "$DB_PASSWORD_SECRET" "$DB_PASSWORD"
+
+if $GCLOUD_BIN sql users list --instance="$SQL_INSTANCE_NAME" --format='value(name)' | grep -Fxq "$DB_USER"; then
+    if [[ "$DB_SECRET_CREATED" == true || -n "${RIKMS_DB_PASSWORD:-}" ]]; then
+        $GCLOUD_BIN sql users set-password "$DB_USER" --instance="$SQL_INSTANCE_NAME" --password="$DB_PASSWORD"
+    fi
+else
+    $GCLOUD_BIN sql users create "$DB_USER" --instance="$SQL_INSTANCE_NAME" --password="$DB_PASSWORD"
+fi
+unset DB_PASSWORD RIKMS_DB_PASSWORD
+
+ENV_FILE="$(mktemp)"
+trap 'rm -f "$ENV_FILE"' EXIT
+chmod 600 "$ENV_FILE"
+cat >"$ENV_FILE" <<EOF
+APP_NAME: RIKMS
+APP_ENV: production
+APP_DEBUG: "false"
+APP_URL: ${APP_URL}
+APP_TIMEZONE: Asia/Manila
+TRUSTED_PROXIES: "*"
+TRUSTED_HOSTS: '^${APP_HOST_REGEX}$|^localhost$|^127\\.0\\.0\\.1$'
+CORS_ALLOWED_ORIGINS: ${APP_URL}
+LOG_CHANNEL: stderr
+LOG_LEVEL: warning
+DB_CONNECTION: pgsql
+DB_HOST: /cloudsql/${INSTANCE_CONNECTION}
+DB_PORT: "5432"
+DB_DATABASE: ${DB_NAME}
+DB_USERNAME: ${DB_USER}
+SESSION_DRIVER: database
+SESSION_LIFETIME: "60"
+SESSION_EXPIRE_ON_CLOSE: "true"
+SESSION_ENCRYPT: "true"
+SESSION_COOKIE: rikms_session
+SESSION_SECURE_COOKIE: "true"
+SESSION_HTTP_ONLY: "true"
+SESSION_SAME_SITE: lax
+CACHE_STORE: database
+CACHE_PREFIX: rikms_cache_
+QUEUE_CONNECTION: database
+DOCUMENTS_DISK: documents
+DOCUMENTS_ROOT: /mnt/rikms-documents
+RIKMS_MAX_DOCUMENT_UPLOAD_KB: "25600"
+RIKMS_MAX_HIGHLIGHT_UPLOAD_KB: "10240"
+MAIL_MAILER: log
+MAIL_FROM_ADDRESS: noreply@rikms.gov.ph
+MAIL_FROM_NAME: RIKMS
+EOF
+
+$GCLOUD_BIN run deploy "$SERVICE_NAME" \
+    --source=. \
+    --build-service-account="$BUILD_ACCOUNT" \
+    --region="$REGION" \
+    --service-account="$SERVICE_ACCOUNT" \
     --allow-unauthenticated \
-    --add-cloudsql-instances "$PROJECT_ID:$REGION:$SQL_INSTANCE_NAME" \
-    --update-env-vars="DB_CONNECTION=pgsql,DB_HOST=127.0.0.1,DB_DATABASE=$DB_NAME,DB_USERNAME=$DB_USER,DB_PASSWORD=$DB_PASSWORD,APP_ENV=staging,APP_DEBUG=true,SESSION_DRIVER=database,CACHE_STORE=database,QUEUE_CONNECTION=database" \
-    --set-secrets="APP_KEY=RIKMS_APP_KEY:latest"
+    --ingress=all \
+    --port=8080 \
+    --cpu=1 \
+    --memory=512Mi \
+    --concurrency=10 \
+    --min-instances=0 \
+    --max-instances=5 \
+    --timeout=120s \
+    --cpu-boost \
+    --add-cloudsql-instances="$INSTANCE_CONNECTION" \
+    --env-vars-file="$ENV_FILE" \
+    --set-secrets="APP_KEY=${APP_KEY_SECRET}:latest,DB_PASSWORD=${DB_PASSWORD_SECRET}:latest" \
+    --add-volume="name=rikms-documents,type=cloud-storage,bucket=${DOCUMENTS_BUCKET},mount-options=implicit-dirs;uid=82;gid=82;file-mode=660;dir-mode=770" \
+    --add-volume-mount="volume=rikms-documents,mount-path=/mnt/rikms-documents" \
+    --startup-probe="initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=3,failureThreshold=20,httpGet.port=8080,httpGet.path=/up" \
+    --liveness-probe="initialDelaySeconds=10,timeoutSeconds=3,periodSeconds=30,failureThreshold=3,httpGet.port=8080,httpGet.path=/up" \
+    --quiet
 
-echo "======================================================="
-echo " Deployment Complete!                                  "
-echo " Next: Run migrations and seed database in the cloud.  "
-echo "======================================================="
+DOWNLOAD_LOG_FILTER='resource.type="cloud_run_revision" AND resource.labels.service_name="'"$SERVICE_NAME"'" AND httpRequest.requestUrl:"/download" AND httpRequest.requestUrl:"grant="'
+if $GCLOUD_BIN logging sinks describe _Default --format='value(exclusions[].name)' | tr ';' '\n' | grep -Fxq rikms_download_grant_tokens; then
+    $GCLOUD_BIN logging sinks update _Default \
+        --update-exclusion="name=rikms_download_grant_tokens,description=Exclude bearer grant query strings while application audit events retain download evidence,filter=${DOWNLOAD_LOG_FILTER}" \
+        --quiet >/dev/null
+else
+    $GCLOUD_BIN logging sinks update _Default \
+        --add-exclusion="name=rikms_download_grant_tokens,description=Exclude bearer grant query strings while application audit events retain download evidence,filter=${DOWNLOAD_LOG_FILTER}" \
+        --quiet >/dev/null
+fi
+
+# Migrations are forward-only. Seeding and migrate:fresh are deliberately absent.
+$GCLOUD_BIN run jobs deploy "${SERVICE_NAME}-migrate" \
+    --image="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(spec.template.spec.containers[0].image)')" \
+    --region="$REGION" \
+    --service-account="$SERVICE_ACCOUNT" \
+    --set-cloudsql-instances="$INSTANCE_CONNECTION" \
+    --env-vars-file="$ENV_FILE" \
+    --set-secrets="APP_KEY=${APP_KEY_SECRET}:latest,DB_PASSWORD=${DB_PASSWORD_SECRET}:latest" \
+    --command=php \
+    --args=artisan,migrate,--force \
+    --max-retries=1 \
+    --task-timeout=10m
+
+$GCLOUD_BIN run jobs deploy "${SERVICE_NAME}-schedule" \
+    --image="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(spec.template.spec.containers[0].image)')" \
+    --region="$REGION" \
+    --service-account="$SERVICE_ACCOUNT" \
+    --set-cloudsql-instances="$INSTANCE_CONNECTION" \
+    --env-vars-file="$ENV_FILE" \
+    --set-secrets="APP_KEY=${APP_KEY_SECRET}:latest,DB_PASSWORD=${DB_PASSWORD_SECRET}:latest" \
+    --add-volume="name=rikms-documents,type=cloud-storage,bucket=${DOCUMENTS_BUCKET},mount-options=implicit-dirs;uid=82;gid=82;file-mode=660;dir-mode=770" \
+    --add-volume-mount="volume=rikms-documents,mount-path=/mnt/rikms-documents" \
+    --command=php \
+    --args=artisan,schedule:run,--no-interaction \
+    --max-retries=1 \
+    --task-timeout=5m
+
+$GCLOUD_BIN run jobs deploy "${SERVICE_NAME}-queue" \
+    --image="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(spec.template.spec.containers[0].image)')" \
+    --region="$REGION" \
+    --service-account="$SERVICE_ACCOUNT" \
+    --set-cloudsql-instances="$INSTANCE_CONNECTION" \
+    --env-vars-file="$ENV_FILE" \
+    --set-secrets="APP_KEY=${APP_KEY_SECRET}:latest,DB_PASSWORD=${DB_PASSWORD_SECRET}:latest" \
+    --add-volume="name=rikms-documents,type=cloud-storage,bucket=${DOCUMENTS_BUCKET},mount-options=implicit-dirs;uid=82;gid=82;file-mode=660;dir-mode=770" \
+    --add-volume-mount="volume=rikms-documents,mount-path=/mnt/rikms-documents" \
+    --command=php \
+    --args=artisan,queue:work,--stop-when-empty,--tries=3,--max-time=540,--sleep=1 \
+    --max-retries=1 \
+    --task-timeout=10m
+
+for job in "${SERVICE_NAME}-schedule" "${SERVICE_NAME}-queue"; do
+    $GCLOUD_BIN run jobs add-iam-policy-binding "$job" \
+        --region="$REGION" \
+        --member="serviceAccount:${SCHEDULER_ACCOUNT}" \
+        --role=roles/run.invoker >/dev/null
+
+    scheduler_name="${job}-every-minute"
+    scheduler_uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${job}:run"
+    if $GCLOUD_BIN scheduler jobs describe "$scheduler_name" --location="$REGION" >/dev/null 2>&1; then
+        $GCLOUD_BIN scheduler jobs update http "$scheduler_name" \
+            --location="$REGION" \
+            --schedule='* * * * *' \
+            --time-zone=Asia/Manila \
+            --uri="$scheduler_uri" \
+            --http-method=POST \
+            --oauth-service-account-email="$SCHEDULER_ACCOUNT" \
+            --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform >/dev/null
+    else
+        $GCLOUD_BIN scheduler jobs create http "$scheduler_name" \
+            --location="$REGION" \
+            --schedule='* * * * *' \
+            --time-zone=Asia/Manila \
+            --uri="$scheduler_uri" \
+            --http-method=POST \
+            --oauth-service-account-email="$SCHEDULER_ACCOUNT" \
+            --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform >/dev/null
+    fi
+done
+
+$GCLOUD_BIN run jobs execute "${SERVICE_NAME}-migrate" --region="$REGION" --wait
+$GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(status.url)'

@@ -11,10 +11,18 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
+use Laravel\Fortify\Events\TwoFactorAuthenticationChallenged;
 
 class AuthController extends Controller
 {
+    /**
+     * A real bcrypt hash keeps unknown-account checks on the same verifier path
+     * without relying on a malformed placeholder that newer hashers reject.
+     */
+    private const UNKNOWN_ACCOUNT_HASH = '$2y$12$YKMC5qbJkyr4THo4iee9lOYFDB8OsxBHChcPP7tzo50OOGWVN27nm';
+
     public function __construct(private readonly AuditLogService $audit) {}
 
     public function showLogin()
@@ -51,7 +59,7 @@ class AuthController extends Controller
 
         $candidate = User::query()->where('email', $credentials['email'])->first();
 
-        $passwordValid = Hash::check($credentials['password'], $candidate?->getAuthPassword() ?? '$2y$12$abcdefghijklmnopqrstuuX8p5.KKzWQZIQFQVeG1AoaWLX0H6i');
+        $passwordValid = Hash::check($credentials['password'], $candidate?->getAuthPassword() ?? self::UNKNOWN_ACCOUNT_HASH);
         if (! $candidate || ! $passwordValid) {
             $this->recordAttempt($request, $candidate, false, 'invalid_credentials');
             throw ValidationException::withMessages(['email' => 'The provided credentials do not match an active RIKMS account.']);
@@ -65,6 +73,29 @@ class AuthController extends Controller
         if ($request->filled('agency_id') && (int) $candidate->agency_id !== (int) $request->integer('agency_id')) {
             $this->recordAttempt($request, $candidate, false, 'agency_mismatch');
             throw ValidationException::withMessages(['agency_id' => 'The selected agency does not match this account.']);
+        }
+
+        if (Hash::needsRehash($candidate->getAuthPassword())) {
+            $candidate->forceFill(['password' => Hash::make($credentials['password'])])->save();
+        }
+
+        if ($candidate->isSuperAdmin() && $candidate->hasEnabledTwoFactorAuthentication()) {
+            $request->session()->regenerate();
+            $request->session()->put([
+                'login.id' => $candidate->id,
+                'login.remember' => $remember,
+                'login.expires_at' => now()->addMinutes(5)->timestamp,
+            ]);
+            TwoFactorAuthenticationChallenged::dispatch($candidate);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'twoFactorRequired' => true,
+                    'redirect' => '/two-factor-challenge',
+                ]);
+            }
+
+            return redirect('/two-factor-challenge');
         }
 
         Auth::login($candidate, $remember);
@@ -130,7 +161,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'token' => ['required', 'string'],
             'email' => ['required', 'email:rfc', 'max:255'],
-            'password' => ['required', 'string', 'min:12', 'confirmed'],
+            'password' => ['required', 'string', 'confirmed', PasswordRule::defaults()],
         ]);
         $validated['email'] = strtolower($validated['email']);
 

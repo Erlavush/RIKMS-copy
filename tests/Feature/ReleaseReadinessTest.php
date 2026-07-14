@@ -4,16 +4,20 @@ namespace Tests\Feature;
 
 use App\Models\AccessRequest;
 use App\Models\Agency;
+use App\Models\AuthenticationEvent;
 use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\DownloadGrant;
 use App\Models\SdgTag;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use PragmaRX\Google2FA\Google2FA;
 use Tests\TestCase;
 
 class ReleaseReadinessTest extends TestCase
@@ -130,7 +134,7 @@ class ReleaseReadinessTest extends TestCase
 
     public function test_document_submission_is_review_gated_and_requires_a_real_source(): void
     {
-        Storage::fake('local');
+        Storage::fake('documents');
         [, $agencyAdmin] = $this->agencyAccount('workflow');
         $superAdmin = $this->superAdmin();
         SdgTag::firstOrCreate(['number' => 9], [
@@ -209,7 +213,7 @@ class ReleaseReadinessTest extends TestCase
     public function test_access_request_approval_issues_a_limited_signed_download_and_prevents_duplicates(): void
     {
         Notification::fake();
-        Storage::fake('local');
+        Storage::fake('documents');
         [$agency, $agencyAdmin] = $this->agencyAccount('access');
         $document = $this->document($agency, $agencyAdmin, [
             'status' => 'published',
@@ -220,7 +224,7 @@ class ReleaseReadinessTest extends TestCase
             'mime_type' => 'application/pdf',
             'file_size' => 15,
         ]);
-        Storage::disk('local')->put($document->file_path, '%PDF-1.4 private');
+        Storage::disk('documents')->put($document->file_path, '%PDF-1.4 private');
 
         $requestPayload = [
             'requester_name' => 'External Researcher',
@@ -311,7 +315,7 @@ class ReleaseReadinessTest extends TestCase
 
     public function test_every_download_policy_is_enforced_by_the_server(): void
     {
-        Storage::fake('local');
+        Storage::fake('documents');
         [$agency, $agencyAdmin] = $this->agencyAccount('download-policies');
         $base = [
             'status' => 'published',
@@ -321,7 +325,7 @@ class ReleaseReadinessTest extends TestCase
             'mime_type' => 'application/pdf',
             'file_size' => 15,
         ];
-        Storage::disk('local')->put('research-documents/policy.pdf', '%PDF-1.4 policy');
+        Storage::disk('documents')->put('research-documents/policy.pdf', '%PDF-1.4 policy');
 
         $public = $this->document($agency, $agencyAdmin, $base + ['access_mode' => 'public_download']);
         $requested = $this->document($agency, $agencyAdmin, $base + ['access_mode' => 'request_access']);
@@ -402,6 +406,22 @@ class ReleaseReadinessTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('password');
     }
 
+    public function test_unknown_account_login_is_non_enumerating_and_audited(): void
+    {
+        $this->postJson('/login', [
+            'email' => 'unknown-login@example.test',
+            'password' => 'Controlled-Audit-Only-2026!',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('email')
+            ->assertJsonPath('errors.email.0', 'The provided credentials do not match an active RIKMS account.');
+
+        $this->assertDatabaseHas(AuthenticationEvent::class, [
+            'email' => 'unknown-login@example.test',
+            'successful' => false,
+            'failure_reason' => 'invalid_credentials',
+        ]);
+    }
+
     public function test_security_headers_are_set_on_html_and_api_responses(): void
     {
         foreach (['/', '/api/rikms/bootstrap'] as $uri) {
@@ -409,13 +429,182 @@ class ReleaseReadinessTest extends TestCase
                 ->assertHeader('X-Content-Type-Options', 'nosniff')
                 ->assertHeader('X-Frame-Options', 'DENY')
                 ->assertHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
-                ->assertHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+                ->assertHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+                ->assertHeader('X-Permitted-Cross-Domain-Policies', 'none');
         }
+
+        $this->get('/api/rikms/bootstrap')
+            ->assertHeader('Cache-Control', 'max-age=0, no-store, private')
+            ->assertHeader('Pragma', 'no-cache');
 
         $this->app['env'] = 'production';
         $this->get('https://localhost/')
             ->assertHeader('Content-Security-Policy')
             ->assertHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+
+    public function test_proxy_ip_cors_and_secure_session_boundaries_are_enforced(): void
+    {
+        Route::middleware('web')->get('/_security/client-ip', fn (Request $request) => response()->json([
+            'ip' => $request->ip(),
+            'secure' => $request->isSecure(),
+        ]));
+
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.7'])
+            ->withHeaders([
+                'X-Forwarded-For' => '203.0.113.42',
+                'X-Forwarded-Proto' => 'https',
+            ])
+            ->getJson('/_security/client-ip')
+            ->assertOk()
+            ->assertJson(['ip' => '203.0.113.42', 'secure' => true]);
+
+        config(['cors.allowed_origins' => ['https://rikms.example.test']]);
+        $this->withHeader('Origin', 'https://rikms.example.test')
+            ->get('/api/rikms/bootstrap')
+            ->assertHeader('Access-Control-Allow-Origin', 'https://rikms.example.test')
+            ->assertHeader('Access-Control-Allow-Credentials', 'true');
+        $this->flushHeaders();
+        $this->withHeader('Origin', 'https://attacker.example')
+            ->get('/api/rikms/bootstrap')
+            ->assertHeader('Access-Control-Allow-Origin', 'https://rikms.example.test');
+
+        config([
+            'session.secure' => true,
+            'session.http_only' => true,
+            'session.same_site' => 'lax',
+            'session.cookie' => 'rikms_session',
+        ]);
+        [, $user] = $this->agencyAccount('cookie');
+        $cookieHeader = implode('; ', $this->postJson('/login', [
+            'email' => $user->email,
+            'password' => 'correct-horse-battery-staple',
+        ])->headers->all('set-cookie'));
+        $this->assertStringContainsString('rikms-session=', $cookieHeader);
+        $this->assertStringContainsString('secure', strtolower($cookieHeader));
+        $this->assertStringContainsString('httponly', strtolower($cookieHeader));
+        $this->assertStringContainsString('samesite=lax', strtolower($cookieHeader));
+    }
+
+    public function test_repository_rejects_office_documents_and_oversized_pdfs(): void
+    {
+        Storage::fake('documents');
+        [, $agencyAdmin] = $this->agencyAccount('file-policy');
+        $base = [
+            'document_type' => 'research',
+            'submit_mode' => 'draft',
+            'metadata' => json_encode(['title' => 'File validation record']),
+            'public_fields' => json_encode(['title']),
+            'access_mode' => 'request_access',
+        ];
+
+        $this->actingAs($agencyAdmin)->post('/api/rikms/documents', [
+            ...$base,
+            'document_file' => UploadedFile::fake()->create(
+                'macro.docm',
+                8,
+                'application/vnd.ms-word.document.macroEnabled.12'
+            ),
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('document_file');
+
+        $this->actingAs($agencyAdmin)->post('/api/rikms/documents', [
+            ...$base,
+            'document_file' => UploadedFile::fake()->create('oversized.pdf', 25 * 1024 + 1, 'application/pdf'),
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('document_file');
+    }
+
+    public function test_production_admin_provisioning_disables_demo_credentials_without_printing_password(): void
+    {
+        User::query()->updateOrCreate(['email' => 'test@example.com'], [
+            'name' => 'Demo Agency Admin',
+            'password' => 'password',
+            'role' => 'agency_admin',
+            'is_active' => true,
+        ]);
+        User::query()->updateOrCreate(['email' => 'admin@rikms.gov.ph'], [
+            'name' => 'Demo Super Admin',
+            'password' => 'password',
+            'role' => 'super_admin',
+            'is_active' => true,
+        ]);
+        putenv('RIKMS_ADMIN_PASSWORD=Temporary-Production-2026!');
+
+        try {
+            $this->artisan('rikms:provision-admin', [
+                'email' => 'security.lead@example.test',
+                '--name' => 'Security Lead',
+                '--disable-demo' => true,
+            ])->expectsOutputToContain('temporary password was not printed')->assertSuccessful();
+        } finally {
+            putenv('RIKMS_ADMIN_PASSWORD');
+        }
+
+        $admin = User::query()->where('email', 'security.lead@example.test')->firstOrFail();
+        $this->assertSame('super_admin', $admin->role);
+        $this->assertTrue($admin->is_active);
+        $this->assertTrue($admin->must_change_password);
+        $this->assertTrue(Hash::check('Temporary-Production-2026!', $admin->password));
+        $this->assertFalse(User::query()->where('email', 'test@example.com')->value('is_active'));
+        $this->assertFalse(User::query()->where('email', 'admin@rikms.gov.ph')->value('is_active'));
+    }
+
+    public function test_super_administrator_must_enroll_and_complete_two_factor_authentication(): void
+    {
+        $admin = User::factory()->create([
+            'name' => 'Two Factor Administrator',
+            'email' => 'two-factor-admin@example.test',
+            'password' => Hash::make('correct-horse-battery-staple'),
+            'role' => 'super_admin',
+            'agency_id' => null,
+            'is_active' => true,
+            'must_change_password' => false,
+        ]);
+
+        $this->actingAs($admin)->get('/admin/dashboard')->assertRedirect('/two-factor/setup');
+        $this->actingAs($admin)->getJson('/api/rikms/admin/dashboard')
+            ->assertStatus(409)
+            ->assertJsonPath('redirect', '/two-factor/setup');
+
+        $setup = $this->actingAs($admin)->postJson('/api/rikms/two-factor/setup', [
+            'currentPassword' => 'correct-horse-battery-staple',
+        ])->assertOk();
+        $this->assertNotEmpty($setup->json('data.qrCodeSvg'));
+        $this->assertNotEmpty($setup->json('data.secretKey'));
+
+        $secret = $setup->json('data.secretKey');
+        $code = app(Google2FA::class)->getCurrentOtp($secret);
+        $confirmed = $this->actingAs($admin)->postJson('/api/rikms/two-factor/confirm', [
+            'code' => $code,
+        ])->assertOk()->assertJsonPath('redirect', '/admin/dashboard');
+        $recoveryCode = $confirmed->json('recoveryCodes.0');
+        $this->assertNotEmpty($recoveryCode);
+        $this->actingAs($admin->fresh())->getJson('/api/rikms/admin/dashboard')->assertOk();
+
+        $this->postJson('/logout')->assertOk();
+        $this->postJson('/login', [
+            'email' => $admin->email,
+            'password' => 'correct-horse-battery-staple',
+        ])->assertOk()
+            ->assertJsonPath('twoFactorRequired', true)
+            ->assertJsonPath('redirect', '/two-factor-challenge');
+
+        $this->postJson('/two-factor-challenge', ['code' => '000000'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('code');
+        $this->postJson('/two-factor-challenge', ['recovery_code' => $recoveryCode])
+            ->assertOk()
+            ->assertJsonPath('redirect', '/admin/dashboard');
+        $this->assertAuthenticatedAs($admin->fresh());
+        $this->assertNotContains($recoveryCode, $admin->fresh()->recoveryCodes());
+        $this->assertDatabaseHas('authentication_events', [
+            'user_id' => $admin->id,
+            'successful' => false,
+            'failure_reason' => 'invalid_two_factor_code',
+        ]);
     }
 
     /**
@@ -444,14 +633,14 @@ class ReleaseReadinessTest extends TestCase
 
     private function superAdmin(): User
     {
-        return User::factory()->create([
+        return $this->withConfirmedTwoFactor(User::factory()->create([
             'name' => 'Release Super Admin',
             'email' => 'release-super-admin@example.test',
             'password' => Hash::make('correct-horse-battery-staple'),
             'role' => 'super_admin',
             'agency_id' => null,
             'is_active' => true,
-        ]);
+        ]));
     }
 
     private function document(Agency $agency, User $uploader, array $attributes = []): Document

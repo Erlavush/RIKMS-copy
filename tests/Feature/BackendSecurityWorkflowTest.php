@@ -53,7 +53,7 @@ class BackendSecurityWorkflowTest extends TestCase
     public function test_role_boundaries_and_agency_isolation_are_enforced(): void
     {
         $agencyUser = User::query()->where('email', 'test@example.com')->firstOrFail();
-        $super = User::query()->where('role', 'super_admin')->firstOrFail();
+        $super = $this->withConfirmedTwoFactor(User::query()->where('role', 'super_admin')->firstOrFail());
         $otherAgency = Agency::query()->whereKeyNot($agencyUser->agency_id)->firstOrFail();
         $otherUser = User::factory()->create(['role' => 'agency_admin', 'agency_id' => $otherAgency->id, 'is_active' => true]);
         $privateDocument = Document::query()->where('agency_id', $agencyUser->agency_id)->firstOrFail();
@@ -84,11 +84,11 @@ class BackendSecurityWorkflowTest extends TestCase
     public function test_only_super_admin_can_moderate_pending_documents(): void
     {
         Notification::fake();
-        Storage::fake('local');
+        Storage::fake('documents');
         $agencyUser = User::query()->where('email', 'test@example.com')->firstOrFail();
-        $super = User::query()->where('role', 'super_admin')->firstOrFail();
+        $super = $this->withConfirmedTwoFactor(User::query()->where('role', 'super_admin')->firstOrFail());
         $pending = Document::query()->where('status', 'pending')->firstOrFail();
-        Storage::disk('local')->put('research-documents/pending.pdf', 'pending');
+        Storage::disk('documents')->put('research-documents/pending.pdf', 'pending');
         $pending->update(['file_path' => 'research-documents/pending.pdf', 'original_filename' => 'pending.pdf']);
 
         $this->actingAs($agencyUser)->postJson('/api/rikms/admin/documents/'.$pending->id.'/approve')->assertForbidden();
@@ -104,10 +104,10 @@ class BackendSecurityWorkflowTest extends TestCase
     public function test_access_approval_creates_limited_signed_download_grant_and_dedupes(): void
     {
         Notification::fake();
-        Storage::fake('local');
+        Storage::fake('documents');
         $agencyUser = User::query()->where('email', 'test@example.com')->firstOrFail();
         $document = Document::query()->where('status', 'published')->firstOrFail();
-        Storage::disk('local')->put('research-documents/available.pdf', 'pdf-content');
+        Storage::disk('documents')->put('research-documents/available.pdf', 'pdf-content');
         $document->update([
             'access_mode' => 'request_access', 'file_path' => 'research-documents/available.pdf',
             'original_filename' => 'available.pdf', 'mime_type' => 'application/pdf', 'file_size' => 11,

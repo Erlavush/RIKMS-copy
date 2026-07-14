@@ -19,3 +19,5 @@ phpstan.neon
 phpunit.xml
 eslint.config.js
 vitest.config.ts
+deploy-to-gcp.sh
+docs

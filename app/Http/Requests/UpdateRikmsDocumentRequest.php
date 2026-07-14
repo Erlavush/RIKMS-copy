@@ -21,7 +21,7 @@ class UpdateRikmsDocumentRequest extends StoreRikmsDocumentRequest
         $rules['submit_mode'] = ['prohibited'];
         $rules['status'] = ['prohibited'];
         $rules['change_summary'] = ['nullable', 'string', 'max:2000'];
-        $rules['document_file'] = ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:51200'];
+        $rules['document_file'] = ['nullable', 'file', 'mimes:pdf', 'mimetypes:application/pdf', 'max:'.config('rikms.max_document_upload_kb')];
 
         foreach ($rules as $key => &$rule) {
             if (is_array($rule) && in_array('required', $rule, true)) {

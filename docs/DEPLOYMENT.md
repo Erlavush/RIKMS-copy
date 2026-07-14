@@ -1,58 +1,64 @@
 # Production Deployment
 
-## Required services
+## Supported target
 
-- PHP 8.3 or newer with the extensions required by Laravel
-- Composer 2
-- Node.js 22 for asset builds
-- PostgreSQL or MySQL for concurrent production use (SQLite is for local demonstration and tests)
-- A durable private object store or persistent private filesystem
-- A queue worker
-- SMTP or a transactional mail provider
-- HTTPS termination at the load balancer or web server
-- A scheduler that invokes Laravel every minute
+The reference production target is Google Cloud Run with PHP 8.3, Cloud SQL for PostgreSQL, Secret Manager, and a private Cloud Storage bucket mounted through Cloud Storage FUSE. SQLite and container-local document storage are development-only.
 
-## Upload runtime limits
+The Cloud Run runtime identity needs only:
 
-RIKMS validates research uploads up to 50 MB. Configure every layer above that limit before launch:
+- `roles/cloudsql.client` on the project
+- `roles/secretmanager.secretAccessor` on the RIKMS secrets
+- `roles/storage.objectUser` on the private RIKMS document bucket
 
-- PHP `upload_max_filesize=64M` and `post_max_size=70M` (or higher)
-- Reverse-proxy/web-server request-body limit of at least 70 MB
-- Platform/function request limit and timeout sufficient for a 50 MB upload
+Do not run RIKMS with the default Compute Engine service account or a project-level Editor role.
 
-The repository includes `.user.ini` defaults for PHP-FPM-compatible hosts, but server and platform limits must still be verified. A too-small PHP limit rejects the request before Laravel can return its normal validation response.
+The deployment operator needs explicit Storage Admin permission while creating
+and reconciling the private bucket. The script removes the bucket's legacy
+project-owner/editor/viewer convenience grants; basic project roles are not
+used as document-store authorization.
 
-## Release procedure
+## Upload boundary
 
-1. Build and test the exact revision in CI.
-2. Install PHP dependencies with `composer install --no-dev --classmap-authoritative`.
-3. Install frontend dependencies with `npm ci` and run `npm run build`.
-4. Provide production environment variables through the deployment platform; never copy a developer `.env`.
-5. Run `php artisan migrate --force` during a controlled maintenance window.
-6. Run `php artisan optimize`.
-7. Restart PHP workers and supervised queue workers so they load the new revision.
-8. Ensure cron or the hosting scheduler invokes `php artisan schedule:run` every minute.
-9. Verify `/up`, login, repository browsing, a 50 MB boundary upload, one authorized API request, scheduler execution, and queue/mail health.
+RIKMS accepts PDF research files up to 25 MB. The container uses `upload_max_filesize=25M`, `post_max_size=27M`, and `client_max_body_size=27M`. This leaves request overhead below Cloud Run's 32 MiB HTTP/1 request ceiling. Larger-file support requires a reviewed direct-to-object-storage upload design; increasing the Laravel validator alone is not sufficient.
 
-## Minimum production environment
+## Automated release
 
-```dotenv
-APP_NAME=RIKMS
-APP_ENV=production
-APP_DEBUG=false
-APP_URL=https://rikms.example.gov.ph
-APP_TIMEZONE=Asia/Manila
-LOG_LEVEL=warning
-SESSION_ENCRYPT=true
-SESSION_SECURE_COOKIE=true
-SESSION_HTTP_ONLY=true
-SESSION_SAME_SITE=lax
-QUEUE_CONNECTION=database
-MAIL_MAILER=smtp
+The repository deployment script is secret-safe and idempotent for infrastructure it owns:
+
+```bash
+PROJECT_ID=your-rikms-project \
+GCLOUD_BIN=/home/eru/.local/opt/google-cloud-sdk/bin/gcloud \
+PHP_BIN=/home/eru/.local/bin/php \
+./deploy-to-gcp.sh
 ```
 
-Set database, mail, and storage credentials in the platform secret manager. RIKMS security-sensitive session revocation requires `SESSION_DRIVER=database`; do not silently replace it with file or cookie sessions. Use a unique `APP_KEY`; retain a previous key during planned rotation through `APP_PREVIOUS_KEYS`.
+It builds from source, deploys a least-privilege runtime, injects `APP_KEY` and `DB_PASSWORD` from Secret Manager, mounts durable private storage, configures startup/liveness probes, and executes `php artisan migrate --force` as a Cloud Run job. It never runs `migrate:fresh` or a demonstration seeder.
+
+For a deliberate database-password rotation, pass `RIKMS_DB_PASSWORD` for one execution. Do not place that value in shell history, `.env`, source control, or CI logs.
+
+## Production administrator
+
+Create the initial temporary password in Secret Manager and expose it only to a one-off command/job as `RIKMS_ADMIN_PASSWORD`, then run:
+
+```bash
+php artisan rikms:provision-admin security.lead@example.gov.ph \
+  --name="RIKMS Security Lead" \
+  --disable-demo
+```
+
+The command does not print the password, forces replacement on first login, deletes the administrator's existing sessions, and disables the known demo accounts. The administrator is then forced to enroll and confirm TOTP before any administration route or API is usable. Remove or disable the bootstrap secret version after the password is changed.
+
+## Release gate
+
+Before routing traffic to a revision:
+
+1. Run the backend suite, Pint, PHPStan, frontend checks, Composer audit, and npm audit on the exact revision.
+2. Confirm `APP_ENV=production`, `APP_DEBUG=false`, trusted host/proxy values, secure encrypted database sessions, and the canonical `APP_URL`.
+3. Confirm Cloud SQL automated backups, point-in-time recovery, deletion protection, and a recent restore drill.
+4. Confirm the private bucket has public-access prevention and uniform bucket-level access.
+5. Confirm `/up`, login, forced password change, PDF upload at the boundary, independent moderation, access approval, bounded download, and cross-agency denial.
+6. Confirm the service uses the dedicated runtime identity and no secret is present in plain-text environment variables or the container image.
 
 ## Rollback
 
-Deploy the previous application revision, restart workers, and restore a database backup only when a migration is not backward-compatible. Database rollback is an operational decision, not an automatic deploy step. Keep uploaded files and the database backup from the same recovery point.
+Shift traffic to the prior Cloud Run revision only when the prior code remains compatible with completed migrations. Database rollback and restore are explicit incident decisions. Restore the database and private document bucket from the same recovery point, and rotate any credentials implicated by the event.

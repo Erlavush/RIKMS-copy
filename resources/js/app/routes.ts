@@ -38,6 +38,8 @@ const TermsPage = component(() => import("./components/PublicInfoPages"), "Terms
 const AgencyLogin = component(() => import("./components/AgencyLogin"), "AgencyLogin");
 const ResetPassword = component(() => import("./components/ResetPassword"), "ResetPassword");
 const ChangePassword = component(() => import("./components/ChangePassword"), "ChangePassword");
+const TwoFactorChallenge = component(() => import("./components/TwoFactorChallenge"), "TwoFactorChallenge");
+const TwoFactorSetup = component(() => import("./components/TwoFactorSetup"), "TwoFactorSetup");
 const AgencyAdminLayout = component(() => import("./components/AgencyAdminLayout"), "AgencyAdminLayout");
 const AgencyAdminDashboard = component(
     () => import("./components/AgencyAdminDashboard"),
@@ -137,6 +139,8 @@ export const router = createBrowserRouter([
     },
     { path: "/reset-password/:token", Component: ResetPassword },
     { path: "/change-password", Component: ChangePassword },
+    { path: "/two-factor-challenge", Component: TwoFactorChallenge },
+    { path: "/two-factor/setup", Component: TwoFactorSetup },
     { path: "/admin/login", Component: SuperAdminLogin },
     {
         path: "/admin",

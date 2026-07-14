@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
 
 class AdminApiController extends RikmsApiController
@@ -271,10 +272,16 @@ class AdminApiController extends RikmsApiController
     {
         $dayAgo = now()->subDay();
         $recent = AuthenticationEvent::query()->with('user')->latest()->limit(30)->get();
+        $admins = User::query()->where('role', 'super_admin')->where('is_active', true);
+        $adminCount = (clone $admins)->count();
+        $twoFactorProtectedAdmins = (clone $admins)->whereNotNull('two_factor_secret')
+            ->whereNotNull('two_factor_confirmed_at')->count();
 
         return response()->json(['data' => [
             'activeUsers' => User::query()->where('is_active', true)->count(),
-            'admins' => User::query()->where('role', 'super_admin')->where('is_active', true)->count(),
+            'admins' => $adminCount,
+            'twoFactorProtectedAdmins' => $twoFactorProtectedAdmins,
+            'twoFactorCoveragePercent' => $adminCount > 0 ? (int) round(($twoFactorProtectedAdmins / $adminCount) * 100) : 100,
             'failedLogins24h' => AuthenticationEvent::query()->where('successful', false)->where('created_at', '>=', $dayAgo)->count(),
             'recentLogins' => $recent->map(fn (AuthenticationEvent $event) => [
                 'id' => $event->id, 'email' => $event->email, 'user' => $event->user?->name,
@@ -283,7 +290,14 @@ class AdminApiController extends RikmsApiController
             ])->values(),
             'securityEvents' => AuditLog::query()->where('event_type', 'security')->latest()->limit(20)->get()
                 ->map(fn (AuditLog $log) => $this->presenter->audit($log))->values(),
-            'passwordPolicy' => ['minimumLength' => 12, 'resetTokensExpireMinutes' => (int) config('auth.passwords.users.expire', 60)],
+            'passwordPolicy' => [
+                'minimumLength' => 14,
+                'mixedCase' => true,
+                'number' => true,
+                'symbol' => true,
+                'administratorTwoFactor' => true,
+                'resetTokensExpireMinutes' => (int) config('auth.passwords.users.expire', 60),
+            ],
             'sessionLifetime' => (int) config('session.lifetime'),
         ]]);
     }
@@ -322,7 +336,7 @@ class AdminApiController extends RikmsApiController
         $validated = $request->validate([
             'name' => [$user ? 'sometimes' : 'required', 'string', 'max:255'],
             'email' => [$user ? 'sometimes' : 'required', 'email:rfc', 'max:255', Rule::unique('users')->ignore($user)],
-            'password' => [$user ? 'nullable' : 'required', 'string', 'min:12'],
+            'password' => [$user ? 'nullable' : 'required', 'string', PasswordRule::defaults()],
             'role' => [$user ? 'sometimes' : 'required', Rule::in(['agency_admin', 'super_admin'])],
             'agency_id' => ['nullable', 'integer', 'exists:agencies,id'],
             'is_active' => ['sometimes', 'boolean'],

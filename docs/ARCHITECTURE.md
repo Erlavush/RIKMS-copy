@@ -1,13 +1,14 @@
 # RIKMS Architecture
 
-RIKMS is a Laravel 12 application with a React single-page interface compiled by Vite. Laravel is the sole source of truth for authentication, authorization, records, workflow state, files, audit events, notifications, and analytics. React renders server state and never grants access on its own.
+RIKMS is a Laravel 13 application with a React single-page interface compiled by Vite. Laravel is the sole source of truth for authentication, authorization, records, workflow state, files, audit events, notifications, and analytics. React renders server state and never grants access on its own.
 
 ## Runtime boundaries
 
 - Public pages may read only published documents and metadata fields explicitly marked public.
 - Agency administrators operate only on users, documents, access requests, and analytics belonging to their agency.
 - Super administrators manage platform-wide governance and moderate submitted documents.
-- Uploaded documents remain on a private filesystem. Downloads pass through an authorized controller and are logged.
+- Super-administration is gated by a confirmed TOTP authenticator after password authentication; recovery codes are encrypted, one-use, and rotated when consumed.
+- Uploaded documents remain on the dedicated private `documents` disk. Cloud Run mounts that disk from a private Cloud Storage bucket; local development maps it to `storage/app/private`. Downloads pass through an authorized controller and are logged.
 - AI metadata extraction is intentionally implemented as a deterministic mocked helper until an approved provider is selected. Its output is always a reviewable suggestion; it cannot submit, approve, publish, or bypass moderation.
 
 ## Document lifecycle

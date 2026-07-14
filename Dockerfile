@@ -36,7 +36,7 @@ COPY --from=asset-builder /app/public/build ./public/build
 
 # Install production PHP dependencies
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+RUN composer install --no-dev --classmap-authoritative --no-interaction --no-progress
 
 # Set up write permissions for Laravel storage/cache
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
@@ -46,10 +46,9 @@ COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/php.ini /usr/local/etc/php/conf.d/custom.ini
 COPY docker/www.conf /usr/local/etc/php-fpm.d/www.conf
-
-# Create startup script that ensures PHP-FPM is ready before nginx accepts traffic
-RUN printf '#!/bin/sh\nphp-fpm -D\nsleep 2\nnginx -g "daemon off;"\n' > /start.sh && chmod +x /start.sh
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod 0755 /entrypoint.sh
 
 EXPOSE 8080
 
-CMD ["/start.sh"]
+CMD ["/entrypoint.sh"]

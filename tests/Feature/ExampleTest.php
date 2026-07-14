@@ -59,7 +59,7 @@ class ExampleTest extends TestCase
 
     public function test_agency_admin_can_create_document_from_figma_upload_endpoint(): void
     {
-        Storage::fake('local');
+        Storage::fake('documents');
         $user = User::where('email', 'test@example.com')->firstOrFail();
 
         $response = $this->actingAs($user)->post('/api/rikms/documents', [

@@ -1,4 +1,4 @@
-import { AlertTriangle, Clock3, KeyRound, ShieldAlert, ShieldCheck, UserCheck, Users } from "lucide-react";
+import { AlertTriangle, Clock3, KeyRound, ShieldAlert, ShieldCheck, UserCheck } from "lucide-react";
 
 import type { DataResponse } from "../../lib/admin-api";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Panel, StatusBadge } from "./AdminUi";
@@ -33,6 +33,8 @@ interface SecurityEvent {
 interface SecurityData {
     activeUsers: number;
     admins: number;
+    twoFactorProtectedAdmins: number;
+    twoFactorCoveragePercent: number;
     failedLogins24h: number;
     recentLogins: LoginEvent[];
     securityEvents: SecurityEvent[];
@@ -79,9 +81,9 @@ export function SecurityCenter() {
             bg: "bg-green-50",
         },
         {
-            label: "Administrator accounts",
-            value: data.admins,
-            icon: Users,
+            label: "Admin 2FA coverage",
+            value: `${data.twoFactorProtectedAdmins}/${data.admins} (${data.twoFactorCoveragePercent}%)`,
+            icon: ShieldCheck,
             color: "text-blue-800",
             bg: "bg-blue-50",
         },

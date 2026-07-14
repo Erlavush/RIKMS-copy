@@ -7,6 +7,7 @@ use App\Models\Document;
 use App\Models\DownloadGrant;
 use App\Models\User;
 use App\Notifications\AccessDecisionMailNotification;
+use App\Support\DocumentStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -26,7 +27,7 @@ class AccessRequestService
     {
         abort_unless($document->status === 'published', 404);
         abort_unless(in_array($document->access_mode, ['request_access', 'embargo_until_date'], true), 422, 'This document does not accept access requests.');
-        abort_unless($document->file_path && Storage::disk('local')->exists($document->file_path), 422, 'The document file is not available for access requests.');
+        abort_unless($document->file_path && Storage::disk(DocumentStorage::disk())->exists($document->file_path), 422, 'The document file is not available for access requests.');
         if ($document->access_mode === 'embargo_until_date') {
             abort_unless($document->embargo_until?->isFuture(), 422, 'This embargo has expired; use the public download instead.');
         }
@@ -63,7 +64,7 @@ class AccessRequestService
             $document = Document::query()->lockForUpdate()->findOrFail($document->id);
             abort_unless($document->status === 'published', 404);
             abort_unless(in_array($document->access_mode, ['request_access', 'embargo_until_date'], true), 422, 'This document does not accept access requests.');
-            abort_unless($document->file_path && Storage::disk('local')->exists($document->file_path), 422, 'The document file is not available for access requests.');
+            abort_unless($document->file_path && Storage::disk(DocumentStorage::disk())->exists($document->file_path), 422, 'The document file is not available for access requests.');
             if ($document->access_mode === 'embargo_until_date') {
                 abort_unless($document->embargo_until?->isFuture(), 422, 'This embargo has expired; use the public download instead.');
             }
@@ -120,7 +121,7 @@ class AccessRequestService
             $eligibleMode = $document->access_mode === 'request_access'
                 || ($document->access_mode === 'embargo_until_date' && $document->embargo_until?->isFuture());
             if ($document->status !== 'published' || ! $eligibleMode
-                || ! $document->file_path || ! Storage::disk('local')->exists($document->file_path)) {
+                || ! $document->file_path || ! Storage::disk(DocumentStorage::disk())->exists($document->file_path)) {
                 throw ValidationException::withMessages(['document' => 'This document is no longer eligible for access approval.']);
             }
 
