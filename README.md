@@ -38,12 +38,13 @@ cp .env.example .env
 /home/eru/.local/bin/php artisan key:generate
 touch database/database.sqlite
 /home/eru/.local/bin/php artisan migrate
+/home/eru/.local/bin/php artisan rikms:provision-demo
 npm install
 npm run build
 /home/eru/.local/bin/php -d upload_max_filesize=25M -d post_max_size=27M artisan serve --host=127.0.0.1 --port=8000
 ```
 
-Normal local and production setup does not create synthetic research papers or fixed demo credentials. Automated tests retain isolated in-memory fixtures. For active frontend development, run `npm run dev` in a second terminal.
+`rikms:provision-demo` is an explicit, local-only step that creates or resets two demonstration accounts: `test@example.com` / `password` for the agency workspace and `admin@rikms.gov.ph` / `password` for system administration. The command refuses to run outside the `local` or `testing` environment. It does not create synthetic research papers. Production setup never creates fixed demo credentials. Automated tests retain isolated in-memory fixtures. For active frontend development, run `npm run dev` in a second terminal.
 
 Keep a queue worker running for mail and digest delivery, and run the Laravel scheduler every minute:
 
