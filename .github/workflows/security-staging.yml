@@ -78,6 +78,7 @@ jobs:
           test -n "${{ vars.GCP_SECURITY_REPORTS_BUCKET }}"
           gcloud storage cp \
             storage/app/security/reports/native.json \
+            --if-generation-match=0 \
             "gs://${{ vars.GCP_SECURITY_REPORTS_BUCKET }}/incoming/staging/${GITHUB_SHA}/native-${GITHUB_RUN_ID}.json"
 
       - name: Enforce Critical and High release gate

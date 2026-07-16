@@ -44,6 +44,20 @@ class SecurityConfigurationTest extends TestCase
         $this->assertDirectoryDoesNotExist(public_path('security'));
     }
 
+    public function test_staging_security_upload_uses_environment_bound_oidc_and_create_only_precondition(): void
+    {
+        $configuration = file_get_contents(base_path('configure-github-security-oidc.sh'));
+        $workflow = file_get_contents(base_path('.github/workflows/security-staging.yml'));
+
+        $this->assertIsString($configuration);
+        $this->assertIsString($workflow);
+        $this->assertStringContainsString('GITHUB_ENVIRONMENT="${GITHUB_ENVIRONMENT:-security-staging}"', $configuration);
+        $this->assertStringContainsString('/subject/repo:${GITHUB_REPOSITORY}:environment:${GITHUB_ENVIRONMENT}', $configuration);
+        $this->assertStringContainsString('environment: security-staging', $workflow);
+        $this->assertStringContainsString('--if-generation-match=0', $workflow);
+        $this->assertStringContainsString('--role=roles/storage.objectCreator', $configuration);
+    }
+
     public function test_mixed_revision_canary_uses_a_backward_compatible_health_probe(): void
     {
         $deployment = file_get_contents(base_path('deploy-to-gcp.sh'));
