@@ -9,13 +9,9 @@ use App\Http\Controllers\Api\DocumentApiController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\TwoFactorSetupController;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\HealthController;
 use App\Http\Controllers\SpaController;
 use App\Http\Controllers\TwoFactorChallengeController;
 use Illuminate\Support\Facades\Route;
-
-Route::get('/up', fn () => response()->json(['status' => 'up']))->name('health.liveness');
-Route::get('/ready', HealthController::class)->name('health.readiness');
 
 Route::get('/api/rikms/bootstrap', [PublicApiController::class, 'bootstrap'])->middleware('throttle:public-read')->name('api.rikms.bootstrap');
 Route::get('/api/rikms/public/documents', [PublicApiController::class, 'index'])->middleware('throttle:public-read')->name('api.rikms.public.documents.index');
