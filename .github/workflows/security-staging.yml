@@ -76,10 +76,10 @@ jobs:
       - name: Upload private evidence for scheduled import
         run: |
           test -n "${{ vars.GCP_SECURITY_REPORTS_BUCKET }}"
-          gcloud storage cp \
-            storage/app/security/reports/native.json \
-            "gs://${{ vars.GCP_SECURITY_REPORTS_BUCKET }}/incoming/staging/${GITHUB_SHA}/native-${GITHUB_RUN_ID}.json" \
-            --if-generation-match=0
+          python3 security/upload_security_report.py \
+            --bucket="${{ vars.GCP_SECURITY_REPORTS_BUCKET }}" \
+            --source=storage/app/security/reports/native.json \
+            --object="incoming/staging/${GITHUB_SHA}/native-${GITHUB_RUN_ID}.json"
 
       - name: Enforce Critical and High release gate
         run: test "${{ steps.scan.outputs.exit_code }}" = "0"
