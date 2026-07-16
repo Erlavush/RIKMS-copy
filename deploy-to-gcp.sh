@@ -430,7 +430,9 @@ if [[ -n "$PREVIOUS_REVISION" ]]; then
         --region="$REGION" \
         --to-tags="${RELEASE_TAG}=25" \
         --quiet
-    curl --fail --silent --show-error --max-time 20 --header='Accept: application/json' "${APP_URL}/ready" >/dev/null
+    # Mixed traffic must use a health route shared by the old and new revisions.
+    # Candidate readiness is already verified directly through CANDIDATE_URL above.
+    curl --fail --silent --show-error --max-time 20 --header='Accept: application/json' "${APP_URL}/up" >/dev/null
 fi
 
 $GCLOUD_BIN run services update-traffic "$SERVICE_NAME" \

@@ -38,6 +38,22 @@ class SecurityConfigurationTest extends TestCase
         $this->assertDirectoryDoesNotExist(public_path('security'));
     }
 
+    public function test_mixed_revision_canary_uses_a_backward_compatible_health_probe(): void
+    {
+        $deployment = file_get_contents(base_path('deploy-to-gcp.sh'));
+        $this->assertIsString($deployment);
+
+        $canaryStart = strpos($deployment, '--to-tags="${RELEASE_TAG}=25"');
+        $this->assertIsInt($canaryStart);
+
+        $canaryEnd = strpos($deployment, '--to-revisions="${CANDIDATE_REVISION}=100"', $canaryStart);
+        $this->assertIsInt($canaryEnd);
+
+        $mixedTrafficProbe = substr($deployment, $canaryStart, $canaryEnd - $canaryStart);
+        $this->assertStringContainsString('"${APP_URL}/up"', $mixedTrafficProbe);
+        $this->assertStringNotContainsString('"${APP_URL}/ready"', $mixedTrafficProbe);
+    }
+
     public function test_container_restores_runtime_cache_ownership_after_warming_views(): void
     {
         $entrypoint = file_get_contents(base_path('docker/entrypoint.sh'));
