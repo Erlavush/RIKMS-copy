@@ -206,6 +206,13 @@ unset DB_PASSWORD RIKMS_DB_PASSWORD
 
 ENV_FILE="$(mktemp)"
 PREVIOUS_REVISION="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)"
+DEPLOY_TRAFFIC_ARGS=(--tag="$RELEASE_TAG")
+if [[ -n "$PREVIOUS_REVISION" ]]; then
+    # Cloud Run accepts --no-traffic only when updating an existing service.
+    # A first staging deployment has no revision to protect, so its candidate
+    # becomes the initial serving revision and is still validated below.
+    DEPLOY_TRAFFIC_ARGS+=(--no-traffic)
+fi
 RELEASE_SUCCEEDED=false
 TRAFFIC_STARTED=false
 cleanup_release() {
@@ -302,8 +309,7 @@ $GCLOUD_BIN run deploy "$SERVICE_NAME" \
     --add-volume-mount="volume=rikms-documents,mount-path=/mnt/rikms-documents" \
     --startup-probe="initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=3,failureThreshold=20,httpGet.port=8080,httpGet.path=/up" \
     --liveness-probe="initialDelaySeconds=10,timeoutSeconds=3,periodSeconds=30,failureThreshold=3,httpGet.port=8080,httpGet.path=/up" \
-    --no-traffic \
-    --tag="$RELEASE_TAG" \
+    "${DEPLOY_TRAFFIC_ARGS[@]}" \
     --quiet
 
 CANDIDATE_REVISION="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(status.latestReadyRevisionName)')"
