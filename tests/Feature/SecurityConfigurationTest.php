@@ -48,20 +48,20 @@ class SecurityConfigurationTest extends TestCase
     {
         $configuration = file_get_contents(base_path('configure-github-security-oidc.sh'));
         $workflow = file_get_contents(base_path('.github/workflows/security-staging.yml'));
+        $uploader = file_get_contents(base_path('security/upload_security_report.py'));
 
         $this->assertIsString($configuration);
         $this->assertIsString($workflow);
+        $this->assertIsString($uploader);
         $this->assertStringContainsString('GITHUB_ENVIRONMENT="${GITHUB_ENVIRONMENT:-security-staging}"', $configuration);
         $this->assertStringContainsString('/subject/repo:${GITHUB_REPOSITORY}:environment:${GITHUB_ENVIRONMENT}', $configuration);
         $this->assertStringContainsString('environment: security-staging', $workflow);
-        $this->assertStringContainsString('--if-generation-match=0', $workflow);
         $this->assertStringContainsString('--role=roles/storage.objectCreator', $configuration);
-
-        $uploadDestination = strpos($workflow, 'GCP_SECURITY_REPORTS_BUCKET }}/incoming/staging/');
-        $createOnlyPrecondition = strpos($workflow, '--if-generation-match=0');
-        $this->assertIsInt($uploadDestination);
-        $this->assertIsInt($createOnlyPrecondition);
-        $this->assertGreaterThan($uploadDestination, $createOnlyPrecondition);
+        $this->assertStringContainsString('python3 security/upload_security_report.py', $workflow);
+        $this->assertStringNotContainsString('gcloud storage cp', $workflow);
+        $this->assertStringContainsString('uploadType', $uploader);
+        $this->assertStringContainsString('ifGenerationMatch', $uploader);
+        $this->assertStringContainsString('method="POST"', $uploader);
     }
 
     public function test_mixed_revision_canary_uses_a_backward_compatible_health_probe(): void
