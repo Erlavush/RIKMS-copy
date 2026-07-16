@@ -872,10 +872,25 @@ def run_background_scans():
     try:
         res = subprocess.run(zap_cmd, shell=True, capture_output=True, text=True, timeout=180, cwd=os.path.dirname(zap_bin))
         if os.path.exists(temp_report):
-            if os.path.exists(ZAP_FILE):
-                os.remove(ZAP_FILE)
-            os.rename(temp_report, ZAP_FILE)
-            print(f"[DAST] ZAP scan completed successfully. Saved to {ZAP_FILE}")
+            try:
+                with open(temp_report, 'r', encoding='utf-8') as f:
+                    temp_data = json.load(f)
+                sites = temp_data.get('site', [])
+                if not sites and os.path.exists(ZAP_FILE):
+                    print("[DAST] ZAP scan found no sites (possible connection issue). Preserving existing ZAP report.")
+                    try:
+                        os.remove(temp_report)
+                    except OSError:
+                        pass
+                else:
+                    if os.path.exists(ZAP_FILE):
+                        os.remove(ZAP_FILE)
+                    os.rename(temp_report, ZAP_FILE)
+                    print(f"[DAST] ZAP scan completed successfully. Saved to {ZAP_FILE}")
+            except Exception as pe:
+                print(f"[DAST] Error checking temp ZAP report: {pe}")
+                if os.path.exists(ZAP_FILE):
+                    print("[DAST] Preserving existing ZAP report due to temp report read error.")
             SCAN_STATUS["zap"] = "completed"
         else:
             print("[DAST] ZAP scan completed, but no report file was generated.")
@@ -973,16 +988,17 @@ def parse_composer_audit(file_path):
             data = json.load(f)
         vulns = []
         advisories = data.get('advisories', {})
-        for package, adv_list in advisories.items():
-            for adv in adv_list:
-                vulns.append({
-                    'package': package,
-                    'title': adv.get('title', 'Vulnerability'),
-                    'cve': adv.get('cve', 'N/A'),
-                    'severity': adv.get('severity', 'Unknown'),
-                    'affected': adv.get('affectedVersions', '*'),
-                    'link': adv.get('link', '')
-                })
+        if isinstance(advisories, dict):
+            for package, adv_list in advisories.items():
+                for adv in adv_list:
+                    vulns.append({
+                        'package': package,
+                        'title': adv.get('title', 'Vulnerability'),
+                        'cve': adv.get('cve', 'N/A'),
+                        'severity': adv.get('severity', 'Unknown'),
+                        'affected': adv.get('affectedVersions', '*'),
+                        'link': adv.get('link', '')
+                    })
         return vulns
     except Exception as e:
         print(f"Error parsing Composer audit: {e}")
@@ -1135,7 +1151,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RIKMS Executive Security & Audit Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script id="chart-js-lib" src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
     <style>
         :root {
             --bg-primary: #090a0f;
@@ -2831,7 +2847,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
         // Translation Maps for Non-Technical Users (DAST) - Mapped to Key Vulnerabilities in docx
         function translateZapAlert(title) {
-            title = title.toLowerCase();
+            title = String(title || '').toLowerCase();
             
             if (title.includes('clickjacking') || title.includes('x-frame-options')) {
                 return {
@@ -2884,7 +2900,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             if (title.includes('csrf') || title.includes('cross-site request forgery') || title.includes('session token')) {
                 return {
                     impact: "<strong>Unauthorized State Modification Risk (CSRF):</strong> An attacker tricks an authenticated admin into clicking a link that triggers state-changing actions (e.g. changing passwords or deleting uploads) on RIKMS, exploiting their active session without their consent.",
-                    remedy: "Verify that the <code>App\\Http\\Middleware\\ValidateCsrfToken</code> middleware is enabled for all web routes, and always include the <code>@csrf</code> directive in Blade forms."
+                    remedy: "Verify that the <code>App\\\\Http\\\\Middleware\\\\ValidateCsrfToken</code> middleware is enabled for all web routes, and always include the <code>@csrf</code> directive in Blade forms."
                 };
             }
             if (title.includes('access control') || title.includes('idor') || title.includes('insecure direct object reference') || title.includes('authorization')) {
@@ -2975,38 +2991,39 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             const tbody = document.getElementById('nativeTableBody');
             const noDataEl = document.getElementById('native-no-data');
             
-            tbody.innerHTML = '';
-            
             if (!data || data.length === 0) {
+                tbody.innerHTML = '';
                 noDataEl.style.display = 'block';
                 return;
             } else {
                 noDataEl.style.display = 'none';
             }
 
+            let html = '';
             data.forEach(item => {
-                const tr = document.createElement('tr');
-                const badgeClass = item.status.toLowerCase();
-                const severityClass = item.severity.toLowerCase();
+                const badgeClass = (item.status || 'warning').toLowerCase();
+                const severityClass = (item.severity || 'low').toLowerCase();
 
-                tr.innerHTML = `
-                    <td class="code-path">${escapeHtml(item.id)}</td>
-                    <td>
-                        <div style="font-weight: 600; color: #fff; margin-bottom: 0.25rem;">${escapeHtml(item.name)}</div>
-                        <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(item.description)}</div>
-                    </td>
-                    <td><span class="badge ${badgeClass}">${item.status}</span></td>
-                    <td><span class="badge ${severityClass}">${item.severity}</span></td>
-                    <td>
-                        <div style="margin-bottom: 0.35rem;"><strong>Observed:</strong> ${escapeHtml(item.observed)}</div>
-                        <div style="font-size: 0.85rem; color: #fb7185; margin-bottom: 0.35rem;">
-                            <strong>Action Required:</strong> ${item.status === 'Passed' ? '<span style="color: #34d399;">No action required. The configuration is secure.</span>' : escapeHtml(item.description)}
-                        </div>
-                        <div style="font-size: 0.8rem; color: #a5b4fc;"><strong>OWASP Category:</strong> ${escapeHtml(item.owasp)}</div>
-                    </td>
+                html += `
+                    <tr>
+                        <td class="code-path">${escapeHtml(item.id)}</td>
+                        <td>
+                            <div style="font-weight: 600; color: #fff; margin-bottom: 0.25rem;">${escapeHtml(item.name)}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(item.description)}</div>
+                        </td>
+                        <td><span class="badge ${badgeClass}">${item.status}</span></td>
+                        <td><span class="badge ${severityClass}">${item.severity}</span></td>
+                        <td>
+                            <div style="margin-bottom: 0.35rem;"><strong>Observed:</strong> ${escapeHtml(item.observed)}</div>
+                            <div style="font-size: 0.85rem; color: #fb7185; margin-bottom: 0.35rem;">
+                                <strong>Action Required:</strong> ${item.status === 'Passed' ? '<span style="color: #34d399;">No action required. The configuration is secure.</span>' : escapeHtml(item.description)}
+                            </div>
+                            <div style="font-size: 0.8rem; color: #a5b4fc;"><strong>OWASP Category:</strong> ${escapeHtml(item.owasp)}</div>
+                        </td>
+                    </tr>
                 `;
-                tbody.appendChild(tr);
             });
+            tbody.innerHTML = html;
         }
 
         // --- PHPUNIT LOGIC ---
@@ -3044,6 +3061,11 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         }
 
         function renderTestCharts() {
+            if (typeof Chart === 'undefined') {
+                console.warn("Chart.js is not loaded yet or failed to load. Skipping chart rendering.");
+                return;
+            }
+
             const passed = testData.filter(d => d.status === 'Passed').length;
             const failed = testData.filter(d => d.status === 'Failed').length;
             const skipped = testData.filter(d => d.status === 'Skipped').length;
@@ -3103,10 +3125,9 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
         function renderTestTable(data) {
             const tbody = document.getElementById('testTableBody');
-            tbody.innerHTML = '';
+            let html = '';
             data.forEach(tc => {
-                const tr = document.createElement('tr');
-                let badgeClass = tc.status.toLowerCase();
+                let badgeClass = (tc.status || 'skipped').toLowerCase();
                 let detailRow = '';
                 if (tc.status === 'Failed' && tc.message) {
                     detailRow = `<div class="error-log">${escapeHtml(tc.message)}</div>`;
@@ -3116,22 +3137,24 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 const friendly = getTestFriendlyDetails(tc.class, tc.name);
                 
                 // Extract simple component name from php class
-                let moduleName = tc.class.split('\\').pop();
+                let moduleName = tc.class.split('\\\\').pop();
                 moduleName = moduleName.replace(/Test$/, '').replace(/([A-Z])/g, ' $1').trim();
 
-                tr.innerHTML = `
-                    <td class="code-path">${escapeHtml(moduleName)}</td>
-                    <td style="font-weight: 500; color: #818cf8;">${escapeHtml(friendly.type)}</td>
-                    <td>
-                        <div style="font-weight: 600; color: #fff; margin-bottom: 0.25rem;">${escapeHtml(tc.name.replace(/^test_/, '').replace(/_/g, ' '))}</div>
-                        <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(friendly.target)}</div>
-                        ${detailRow}
-                    </td>
-                    <td><span class="badge ${badgeClass}">${tc.status}</span></td>
-                    <td class="duration-text">${tc.time.toFixed(4)}s</td>
+                html += `
+                    <tr>
+                        <td class="code-path">${escapeHtml(moduleName)}</td>
+                        <td style="font-weight: 500; color: #818cf8;">${escapeHtml(friendly.type)}</td>
+                        <td>
+                            <div style="font-weight: 600; color: #fff; margin-bottom: 0.25rem;">${escapeHtml((tc.name || '').replace(/^test_/, '').replace(/_/g, ' '))}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(friendly.target)}</div>
+                            ${detailRow}
+                        </td>
+                        <td><span class="badge ${badgeClass}">${tc.status}</span></td>
+                        <td class="duration-text">${tc.time.toFixed(4)}s</td>
+                    </tr>
                 `;
-                tbody.appendChild(tr);
             });
+            tbody.innerHTML = html;
         }
 
         function filterTests() {
@@ -3189,35 +3212,37 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
         function renderLarastanTable(errors) {
             const tbody = document.getElementById('larastanTableBody');
-            tbody.innerHTML = '';
             if (errors.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: var(--color-passed); padding: 2rem;">Clean scan! Larastan found zero issues in your codebase.</td></tr>';
                 return;
             }
+            
+            let html = '';
             errors.forEach(err => {
-                const tr = document.createElement('tr');
                 const trans = translateLarastanError(err.message);
                 
-                tr.innerHTML = `
-                    <td>
-                        <div class="code-path">${escapeHtml(err.file)}</div>
-                        <div class="line-num">Line ${err.line}</div>
-                    </td>
-                    <td>
-                        <div class="business-explanation">
-                            ${trans.impact}
-                        </div>
-                        <div class="technical-details">
-                            <button class="technical-toggle-btn" onclick="toggleTechBox(this)">Show Technical Code Error</button>
-                            <div class="technical-box">
-                                <div class="error-log" style="margin-bottom: 0.5rem;">${escapeHtml(err.message)}</div>
-                                <div style="font-size: 0.85rem; color: #fb7185; margin-top: 0.5rem;"><strong>Action Required:</strong> ${trans.remedy}</div>
+                html += `
+                    <tr>
+                        <td>
+                            <div class="code-path">${escapeHtml(err.file)}</div>
+                            <div class="line-num">Line ${err.line}</div>
+                        </td>
+                        <td>
+                            <div class="business-explanation">
+                                ${trans.impact}
                             </div>
-                        </div>
-                    </td>
+                            <div class="technical-details">
+                                <button class="technical-toggle-btn" onclick="toggleTechBox(this)">Show Technical Code Error</button>
+                                <div class="technical-box">
+                                    <div class="error-log" style="margin-bottom: 0.5rem;">${escapeHtml(err.message)}</div>
+                                    <div style="font-size: 0.85rem; color: #fb7185; margin-top: 0.5rem;"><strong>Action Required:</strong> ${trans.remedy}</div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
                 `;
-                tbody.appendChild(tr);
             });
+            tbody.innerHTML = html;
         }
 
         function toggleTechBox(btn) {
@@ -3267,8 +3292,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 nodata.style.display = 'none';
                 
                 const total = zapData.length;
-                const high = zapData.filter(d => d.risk.toLowerCase() === 'high').length;
-                const medium = zapData.filter(d => d.risk.toLowerCase() === 'medium').length;
+                const high = zapData.filter(d => (d.risk || 'Low').toLowerCase() === 'high').length;
+                const medium = zapData.filter(d => (d.risk || 'Low').toLowerCase() === 'medium').length;
                 const lowOrInfo = total - high - medium;
                 
                 document.getElementById('zap-total').innerText = total;
@@ -3320,67 +3345,70 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         function renderScaComposerTable(vulns) {
             const tbody = document.getElementById('scaComposerTableBody');
             const nodata = document.getElementById('sca-composer-no-data');
-            tbody.innerHTML = '';
             
             if (vulns.length === 0) {
+                tbody.innerHTML = '';
                 nodata.style.display = 'block';
                 return;
             }
             nodata.style.display = 'none';
 
+            let html = '';
             vulns.forEach(v => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="font-weight: 600; color: #818cf8;">${escapeHtml(v.package)}</td>
-                    <td><span class="badge ${v.severity.toLowerCase()}">${escapeHtml(v.severity)}</span></td>
-                    <td><code style="font-family: var(--font-mono); color: #fb923c;">${escapeHtml(v.cve)}</code></td>
-                    <td>
-                        <div style="font-size: 0.9rem; color: #d1d5db;">${escapeHtml(v.title)}</div>
-                        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Affected versions: ${escapeHtml(v.affected)}</div>
-                    </td>
-                    <td>
-                        ${v.link ? `<a href="${escapeHtml(v.link)}" target="_blank" style="color: #818cf8; text-decoration: underline;">View</a>` : 'N/A'}
-                    </td>
+                html += `
+                    <tr>
+                        <td style="font-weight: 600; color: #818cf8;">${escapeHtml(v.package)}</td>
+                        <td><span class="badge ${(v.severity || 'unknown').toLowerCase()}">${escapeHtml(v.severity || 'unknown')}</span></td>
+                        <td><code style="font-family: var(--font-mono); color: #fb923c;">${escapeHtml(v.cve)}</code></td>
+                        <td>
+                            <div style="font-size: 0.9rem; color: #d1d5db;">${escapeHtml(v.title)}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Affected versions: ${escapeHtml(v.affected)}</div>
+                        </td>
+                        <td>
+                            ${v.link ? `<a href="${escapeHtml(v.link)}" target="_blank" style="color: #818cf8; text-decoration: underline;">View</a>` : 'N/A'}
+                        </td>
+                    </tr>
                 `;
-                tbody.appendChild(tr);
             });
+            tbody.innerHTML = html;
         }
 
         function renderScaNpmTable(vulns) {
             const tbody = document.getElementById('scaNpmTableBody');
             const nodata = document.getElementById('sca-npm-no-data');
-            tbody.innerHTML = '';
             
             if (vulns.length === 0) {
+                tbody.innerHTML = '';
                 nodata.style.display = 'block';
                 return;
             }
             nodata.style.display = 'none';
 
+            let html = '';
             vulns.forEach(v => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="font-weight: 600; color: #818cf8;">${escapeHtml(v.package)}</td>
-                    <td><span class="badge ${v.severity.toLowerCase()}">${escapeHtml(v.severity)}</span></td>
-                    <td><code style="font-family: var(--font-mono); color: #fb923c;">${escapeHtml(v.cve)}</code></td>
-                    <td>
-                        <div style="font-size: 0.9rem; color: #d1d5db;">${escapeHtml(v.title)}</div>
-                        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Affected range: ${escapeHtml(v.affected)}</div>
-                    </td>
-                    <td>
-                        ${v.link ? `<a href="${escapeHtml(v.link)}" target="_blank" style="color: #818cf8; text-decoration: underline;">View</a>` : 'N/A'}
-                    </td>
+                html += `
+                    <tr>
+                        <td style="font-weight: 600; color: #818cf8;">${escapeHtml(v.package)}</td>
+                        <td><span class="badge ${(v.severity || 'unknown').toLowerCase()}">${escapeHtml(v.severity || 'unknown')}</span></td>
+                        <td><code style="font-family: var(--font-mono); color: #fb923c;">${escapeHtml(v.cve)}</code></td>
+                        <td>
+                            <div style="font-size: 0.9rem; color: #d1d5db;">${escapeHtml(v.title)}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Affected range: ${escapeHtml(v.affected)}</div>
+                        </td>
+                        <td>
+                            ${v.link ? `<a href="${escapeHtml(v.link)}" target="_blank" style="color: #818cf8; text-decoration: underline;">View</a>` : 'N/A'}
+                        </td>
+                    </tr>
                 `;
-                tbody.appendChild(tr);
             });
+            tbody.innerHTML = html;
         }
 
         function renderZapTable(alerts) {
             const tbody = document.getElementById('zapTableBody');
-            tbody.innerHTML = '';
+            let html = '';
             alerts.forEach(alert => {
-                const tr = document.createElement('tr');
-                const badgeClass = alert.risk.toLowerCase();
+                const badgeClass = (alert.risk || 'informational').toLowerCase();
                 const trans = translateZapAlert(alert.title);
                 
                 let urlsList = '';
@@ -3393,29 +3421,31 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     </div>`;
                 }
 
-                tr.innerHTML = `
-                    <td><span class="badge ${badgeClass}">${alert.risk}</span></td>
-                    <td style="font-weight: 600;">${escapeHtml(alert.title)}</td>
-                    <td>
-                        <div class="business-explanation">
-                            ${trans.impact}
-                        </div>
-                        ${urlsList}
-                        <div class="technical-details">
-                            <button class="technical-toggle-btn" onclick="toggleTechBox(this)">Show Technical Details & Fix</button>
-                            <div class="technical-box">
-                                <div class="description-box" style="margin-bottom: 0.5rem;">${escapeHtml(alert.description)}</div>
-                                <div class="solution-box">
-                                    <strong>Action Required:</strong><br>
-                                    ${trans.remedy}<br><br>
-                                    <em>Technical Recommendation:</em> ${escapeHtml(alert.solution)}
+                html += `
+                    <tr>
+                        <td><span class="badge ${badgeClass}">${alert.risk}</span></td>
+                        <td style="font-weight: 600;">${escapeHtml(alert.title)}</td>
+                        <td>
+                            <div class="business-explanation">
+                                ${trans.impact}
+                            </div>
+                            ${urlsList}
+                            <div class="technical-details">
+                                <button class="technical-toggle-btn" onclick="toggleTechBox(this)">Show Technical Details & Fix</button>
+                                <div class="technical-box">
+                                    <div class="description-box" style="margin-bottom: 0.5rem;">${escapeHtml(alert.description)}</div>
+                                    <div class="solution-box">
+                                        <strong>Action Required:</strong><br>
+                                        ${trans.remedy}<br><br>
+                                        <em>Technical Recommendation:</em> ${escapeHtml(alert.solution)}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </td>
+                        </td>
+                    </tr>
                 `;
-                tbody.appendChild(tr);
             });
+            tbody.innerHTML = html;
         }
 
         function filterZap() {
@@ -3481,9 +3511,12 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
             if (zapData && zapData.length > 0) {
                 zapReportExists = true;
-                zapHighCount = zapData.filter(d => d.risk.toLowerCase() === 'high').length;
-                zapMediumCount = zapData.filter(d => d.risk.toLowerCase() === 'medium').length;
-                zapLowCount = zapData.filter(d => d.risk.toLowerCase() === 'low' || d.risk.toLowerCase() === 'warning').length;
+                zapHighCount = zapData.filter(d => (d.risk || 'Low').toLowerCase() === 'high').length;
+                zapMediumCount = zapData.filter(d => (d.risk || 'Low').toLowerCase() === 'medium').length;
+                zapLowCount = zapData.filter(d => {
+                    const r = (d.risk || 'Low').toLowerCase();
+                    return r === 'low' || r === 'warning';
+                }).length;
 
                 // Penalties: -15 per High, -5 per Medium, -1 per Low
                 dastSubScore = Math.max(0, 30 - (zapHighCount * 15) - (zapMediumCount * 5) - (zapLowCount * 1));
@@ -3658,15 +3691,28 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         }
 
         function startPolling() {
-            pollScanStatus();
             pollInterval = setInterval(pollScanStatus, 1500);
+            pollScanStatus();
         }
 
         // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
+        function init() {
             loadAllData();
             startPolling();
-        });
+        }
+
+        // Run initialization immediately since elements are already parsed
+        init();
+
+        // Listen for Chart.js to load to dynamically render charts
+        const chartLib = document.getElementById('chart-js-lib');
+        if (chartLib && typeof chartLib.addEventListener === 'function') {
+            chartLib.addEventListener('load', function() {
+                if (testData && testData.length > 0) {
+                    renderTestCharts();
+                }
+            });
+        }
     </script>
 </body>
 </html>
