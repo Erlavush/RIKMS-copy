@@ -15,9 +15,12 @@ DB_USER="${DB_USER:-rikms-user}"
 SERVICE_ACCOUNT_NAME="${SERVICE_ACCOUNT_NAME:-rikms-runtime}"
 SCHEDULER_ACCOUNT_NAME="${SCHEDULER_ACCOUNT_NAME:-rikms-scheduler}"
 APP_URL="${APP_URL:-https://rikms.v3ra.net}"
+APP_ENVIRONMENT="${APP_ENVIRONMENT:-production}"
 APP_KEY_SECRET="${APP_KEY_SECRET:-rikms-app-key}"
 DB_PASSWORD_SECRET="${DB_PASSWORD_SECRET:-rikms-db-password}"
 DOCUMENTS_BUCKET="${DOCUMENTS_BUCKET:-${PROJECT_ID}-rikms-private}"
+SECURITY_REPORTS_BUCKET="${SECURITY_REPORTS_BUCKET:-${PROJECT_ID}-rikms-security-private}"
+RELEASE_TAG="${RELEASE_TAG:-release-candidate}"
 GCLOUD_BIN="${GCLOUD_BIN:-gcloud}"
 PHP_BIN="${PHP_BIN:-php}"
 
@@ -28,8 +31,12 @@ APP_HOST="${APP_URL#*://}"
 APP_HOST="${APP_HOST%%/*}"
 APP_HOST_REGEX="${APP_HOST//./\\.}"
 
+[[ "$SERVICE_NAME" =~ ^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$ ]] || { echo "SERVICE_NAME is invalid." >&2; exit 1; }
+[[ "$RELEASE_TAG" =~ ^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$ ]] || { echo "RELEASE_TAG is invalid." >&2; exit 1; }
+
 command -v "$GCLOUD_BIN" >/dev/null 2>&1 || { echo "gcloud is not available" >&2; exit 1; }
 command -v "$PHP_BIN" >/dev/null 2>&1 || { echo "php is not available" >&2; exit 1; }
+command -v curl >/dev/null 2>&1 || { echo "curl is not available" >&2; exit 1; }
 
 if [[ -z "$($GCLOUD_BIN auth list --filter=status:ACTIVE --format='value(account)' --limit=1)" ]]; then
     echo "Authenticate gcloud before deploying." >&2
@@ -95,13 +102,27 @@ $GCLOUD_BIN storage buckets update "gs://${DOCUMENTS_BUCKET}" \
 $GCLOUD_BIN storage buckets add-iam-policy-binding "gs://${DOCUMENTS_BUCKET}" \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role=roles/storage.objectUser >/dev/null
+
+if ! $GCLOUD_BIN storage buckets describe "gs://${SECURITY_REPORTS_BUCKET}" >/dev/null 2>&1; then
+    $GCLOUD_BIN storage buckets create "gs://${SECURITY_REPORTS_BUCKET}" \
+        --location="$REGION" \
+        --uniform-bucket-level-access \
+        --public-access-prevention
+fi
+$GCLOUD_BIN storage buckets update "gs://${SECURITY_REPORTS_BUCKET}" \
+    --public-access-prevention \
+    --uniform-bucket-level-access >/dev/null
+$GCLOUD_BIN storage buckets add-iam-policy-binding "gs://${SECURITY_REPORTS_BUCKET}" \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
+    --role=roles/storage.objectUser >/dev/null
 # Bucket creation adds project convenience grants. They are broader than the
-# explicit RIKMS runtime binding and can let project viewers read documents.
-while read -r member role; do
-    $GCLOUD_BIN storage buckets remove-iam-policy-binding "gs://${DOCUMENTS_BUCKET}" \
-        --member="$member" \
-        --role="$role" >/dev/null 2>&1 || true
-done <<EOF
+# explicit runtime binding and can expose documents or assessment evidence.
+for private_bucket in "$DOCUMENTS_BUCKET" "$SECURITY_REPORTS_BUCKET"; do
+    while read -r member role; do
+        $GCLOUD_BIN storage buckets remove-iam-policy-binding "gs://${private_bucket}" \
+            --member="$member" \
+            --role="$role" >/dev/null 2>&1 || true
+    done <<EOF
 projectViewer:${PROJECT_ID} roles/storage.legacyBucketReader
 projectViewer:${PROJECT_ID} roles/storage.legacyObjectReader
 projectEditor:${PROJECT_ID} roles/storage.legacyObjectOwner
@@ -109,6 +130,7 @@ projectOwner:${PROJECT_ID} roles/storage.legacyObjectOwner
 projectEditor:${PROJECT_ID} roles/storage.legacyBucketOwner
 projectOwner:${PROJECT_ID} roles/storage.legacyBucketOwner
 EOF
+done
 
 if ! $GCLOUD_BIN sql instances describe "$SQL_INSTANCE_NAME" >/dev/null 2>&1; then
     $GCLOUD_BIN sql instances create "$SQL_INSTANCE_NAME" \
@@ -183,16 +205,34 @@ fi
 unset DB_PASSWORD RIKMS_DB_PASSWORD
 
 ENV_FILE="$(mktemp)"
-trap 'rm -f "$ENV_FILE"' EXIT
+PREVIOUS_REVISION="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)"
+RELEASE_SUCCEEDED=false
+TRAFFIC_STARTED=false
+cleanup_release() {
+    status=$?
+    rm -f "$ENV_FILE"
+    if [[ "$RELEASE_SUCCEEDED" != true && "$TRAFFIC_STARTED" == true && -n "$PREVIOUS_REVISION" ]]; then
+        set +e
+        echo "Release failed; restoring 100% traffic to ${PREVIOUS_REVISION}." >&2
+        $GCLOUD_BIN run services update-traffic "$SERVICE_NAME" \
+            --region="$REGION" \
+            --to-revisions="${PREVIOUS_REVISION}=100" \
+            --remove-tags="$RELEASE_TAG" \
+            --quiet >/dev/null
+        set -e
+    fi
+    return "$status"
+}
+trap cleanup_release EXIT
 chmod 600 "$ENV_FILE"
 cat >"$ENV_FILE" <<EOF
 APP_NAME: RIKMS
-APP_ENV: production
+APP_ENV: ${APP_ENVIRONMENT}
 APP_DEBUG: "false"
 APP_URL: ${APP_URL}
 APP_TIMEZONE: Asia/Manila
 TRUSTED_PROXIES: "*"
-TRUSTED_HOSTS: '^${APP_HOST_REGEX}$|^localhost$|^127\\.0\\.0\\.1$'
+TRUSTED_HOSTS: '^${APP_HOST_REGEX}$|^${RELEASE_TAG}---${SERVICE_NAME}-[a-z0-9.-]+\\.run\\.app$|^localhost$|^127\\.0\\.0\\.1$'
 CORS_ALLOWED_ORIGINS: ${APP_URL}
 LOG_CHANNEL: stderr
 LOG_LEVEL: warning
@@ -216,6 +256,7 @@ DOCUMENTS_DISK: documents
 DOCUMENTS_ROOT: /mnt/rikms-documents
 RIKMS_MAX_DOCUMENT_UPLOAD_KB: "25600"
 RIKMS_MAX_HIGHLIGHT_UPLOAD_KB: "10240"
+RIKMS_DOCUMENT_PROCESSING_AUTO_QUEUE: "true"
 RIKMS_AI_ENABLED: "true"
 RIKMS_AI_AUTO_QUEUE: "true"
 GOOGLE_CLOUD_PROJECT: ${PROJECT_ID}
@@ -226,6 +267,14 @@ RIKMS_AI_TIMEOUT_SECONDS: "100"
 DOCUMENTS_GCS_BUCKET: ${DOCUMENTS_BUCKET}
 DOCUMENT_AI_LOCATION: us
 RIKMS_DRIVE_SYNC_ENABLED: "false"
+SECURITY_REPORTS_DISK: security-reports
+SECURITY_REPORTS_PREFIX: reports
+SECURITY_REPORTS_PATH: /mnt/rikms-security
+SECURITY_ALLOWED_TARGETS: ${APP_URL}
+SECURITY_PRODUCTION_HOST: ${APP_HOST}
+SECURITY_ACTIVE_SCAN_ENABLED: "false"
+CLAMAV_ENABLED: "false"
+CLAMAV_REQUIRED: "false"
 MAIL_MAILER: log
 MAIL_FROM_ADDRESS: noreply@rikms.gov.ph
 MAIL_FROM_NAME: RIKMS
@@ -253,7 +302,14 @@ $GCLOUD_BIN run deploy "$SERVICE_NAME" \
     --add-volume-mount="volume=rikms-documents,mount-path=/mnt/rikms-documents" \
     --startup-probe="initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=3,failureThreshold=20,httpGet.port=8080,httpGet.path=/up" \
     --liveness-probe="initialDelaySeconds=10,timeoutSeconds=3,periodSeconds=30,failureThreshold=3,httpGet.port=8080,httpGet.path=/up" \
+    --no-traffic \
+    --tag="$RELEASE_TAG" \
     --quiet
+
+CANDIDATE_REVISION="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(status.latestReadyRevisionName)')"
+SERVICE_URL="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(status.url)')"
+CANDIDATE_URL="${SERVICE_URL/https:\/\//https:\/\/${RELEASE_TAG}---}"
+CANDIDATE_IMAGE="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(spec.template.spec.containers[0].image)')"
 
 DOWNLOAD_LOG_FILTER='resource.type="cloud_run_revision" AND resource.labels.service_name="'"$SERVICE_NAME"'" AND httpRequest.requestUrl:"/download" AND httpRequest.requestUrl:"grant="'
 if $GCLOUD_BIN logging sinks describe _Default --format='value(exclusions[].name)' | tr ';' '\n' | grep -Fxq rikms_download_grant_tokens; then
@@ -268,7 +324,7 @@ fi
 
 # Migrations are forward-only. Seeding and migrate:fresh are deliberately absent.
 $GCLOUD_BIN run jobs deploy "${SERVICE_NAME}-migrate" \
-    --image="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(spec.template.spec.containers[0].image)')" \
+    --image="$CANDIDATE_IMAGE" \
     --region="$REGION" \
     --service-account="$SERVICE_ACCOUNT" \
     --set-cloudsql-instances="$INSTANCE_CONNECTION" \
@@ -279,8 +335,12 @@ $GCLOUD_BIN run jobs deploy "${SERVICE_NAME}-migrate" \
     --max-retries=1 \
     --task-timeout=10m
 
+# Finish forward-only schema changes before the scheduler or queue can invoke
+# code from the new image.
+$GCLOUD_BIN run jobs execute "${SERVICE_NAME}-migrate" --region="$REGION" --wait
+
 $GCLOUD_BIN run jobs deploy "${SERVICE_NAME}-schedule" \
-    --image="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(spec.template.spec.containers[0].image)')" \
+    --image="$CANDIDATE_IMAGE" \
     --region="$REGION" \
     --service-account="$SERVICE_ACCOUNT" \
     --set-cloudsql-instances="$INSTANCE_CONNECTION" \
@@ -288,13 +348,15 @@ $GCLOUD_BIN run jobs deploy "${SERVICE_NAME}-schedule" \
     --set-secrets="APP_KEY=${APP_KEY_SECRET}:latest,DB_PASSWORD=${DB_PASSWORD_SECRET}:latest" \
     --add-volume="name=rikms-documents,type=cloud-storage,bucket=${DOCUMENTS_BUCKET},mount-options=implicit-dirs;uid=82;gid=82;file-mode=660;dir-mode=770" \
     --add-volume-mount="volume=rikms-documents,mount-path=/mnt/rikms-documents" \
+    --add-volume="name=rikms-security-reports,type=cloud-storage,bucket=${SECURITY_REPORTS_BUCKET},mount-options=implicit-dirs;uid=82;gid=82;file-mode=660;dir-mode=770" \
+    --add-volume-mount="volume=rikms-security-reports,mount-path=/mnt/rikms-security" \
     --command=php \
     --args=artisan,schedule:run,--no-interaction \
     --max-retries=1 \
     --task-timeout=5m
 
 $GCLOUD_BIN run jobs deploy "${SERVICE_NAME}-queue" \
-    --image="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(spec.template.spec.containers[0].image)')" \
+    --image="$CANDIDATE_IMAGE" \
     --region="$REGION" \
     --service-account="$SERVICE_ACCOUNT" \
     --set-cloudsql-instances="$INSTANCE_CONNECTION" \
@@ -336,5 +398,41 @@ for job in "${SERVICE_NAME}-schedule" "${SERVICE_NAME}-queue"; do
     fi
 done
 
-$GCLOUD_BIN run jobs execute "${SERVICE_NAME}-migrate" --region="$REGION" --wait
-$GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(status.url)'
+probe_candidate() {
+    local path="$1" expected="$2"
+    body="$(curl --fail --silent --show-error --max-time 20 \
+        --header='Accept: application/json' \
+        "${CANDIDATE_URL}${path}")"
+    if [[ "$body" != *"\"status\":\"${expected}\""* ]]; then
+        echo "Candidate probe ${path} returned an unexpected body." >&2
+        return 1
+    fi
+}
+
+probe_candidate /up up
+probe_candidate /ready ready
+
+if [[ -n "$PREVIOUS_REVISION" ]]; then
+    $GCLOUD_BIN run services update-traffic "$SERVICE_NAME" \
+        --region="$REGION" \
+        --to-tags="${RELEASE_TAG}=5" \
+        --quiet
+    TRAFFIC_STARTED=true
+    curl --fail --silent --show-error --max-time 20 --header='Accept: application/json' "${APP_URL}/up" >/dev/null
+
+    $GCLOUD_BIN run services update-traffic "$SERVICE_NAME" \
+        --region="$REGION" \
+        --to-tags="${RELEASE_TAG}=25" \
+        --quiet
+    curl --fail --silent --show-error --max-time 20 --header='Accept: application/json' "${APP_URL}/ready" >/dev/null
+fi
+
+$GCLOUD_BIN run services update-traffic "$SERVICE_NAME" \
+    --region="$REGION" \
+    --to-revisions="${CANDIDATE_REVISION}=100" \
+    --remove-tags="$RELEASE_TAG" \
+    --quiet
+curl --fail --silent --show-error --max-time 20 --header='Accept: application/json' "${APP_URL}/ready" >/dev/null
+
+RELEASE_SUCCEEDED=true
+echo "Released ${CANDIDATE_REVISION} to ${APP_URL}; previous revision: ${PREVIOUS_REVISION:-none}."

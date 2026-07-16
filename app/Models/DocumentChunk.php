@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DocumentChunk extends Model
 {
@@ -13,7 +14,7 @@ class DocumentChunk extends Model
         'word_count',
     ];
 
-    public function document()
+    public function document(): BelongsTo
     {
         return $this->belongsTo(Document::class);
     }

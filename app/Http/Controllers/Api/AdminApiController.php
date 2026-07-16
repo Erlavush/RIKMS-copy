@@ -10,6 +10,8 @@ use App\Models\Document;
 use App\Models\DownloadEvent;
 use App\Models\Permission;
 use App\Models\Role;
+use App\Models\SecurityFinding;
+use App\Models\SecurityScan;
 use App\Models\User;
 use App\Services\AuditLogService;
 use App\Services\PlatformSettingsService;
@@ -276,6 +278,19 @@ class AdminApiController extends RikmsApiController
         $adminCount = (clone $admins)->count();
         $twoFactorProtectedAdmins = (clone $admins)->whereNotNull('two_factor_secret')
             ->whereNotNull('two_factor_confirmed_at')->count();
+        $scans = SecurityScan::query()->withCount('findings')->latest('completed_at')->limit(12)->get();
+        $latestScan = $scans->first();
+        $latestFindings = $latestScan?->findings()->get()
+            ->sortBy(fn (SecurityFinding $finding) => match ($finding->severity) {
+                'critical' => 0, 'high' => 1, 'medium' => 2, 'low' => 3, default => 4,
+            })->take(50)->values() ?? collect();
+        $openCounts = $latestScan
+            ? SecurityFinding::query()
+                ->where('security_scan_id', $latestScan->id)
+                ->whereIn('status', ['observation', 'confirmed', 'accepted_risk'])
+                ->select('severity', DB::raw('COUNT(*) as aggregate'))
+                ->groupBy('severity')->pluck('aggregate', 'severity')
+            : collect();
 
         return response()->json(['data' => [
             'activeUsers' => User::query()->where('is_active', true)->count(),
@@ -299,7 +314,59 @@ class AdminApiController extends RikmsApiController
                 'resetTokensExpireMinutes' => (int) config('auth.passwords.users.expire', 60),
             ],
             'sessionLifetime' => (int) config('session.lifetime'),
+            'assessment' => [
+                'latestScan' => $latestScan ? $this->presentSecurityScan($latestScan) : null,
+                'scans' => $scans->map(fn (SecurityScan $scan) => $this->presentSecurityScan($scan))->values(),
+                'findings' => $latestFindings->map(fn (SecurityFinding $finding) => $this->presentSecurityFinding($finding))->values(),
+                'openCounts' => [
+                    'critical' => (int) ($openCounts['critical'] ?? 0),
+                    'high' => (int) ($openCounts['high'] ?? 0),
+                    'medium' => (int) ($openCounts['medium'] ?? 0),
+                    'low' => (int) ($openCounts['low'] ?? 0),
+                    'info' => (int) ($openCounts['info'] ?? 0),
+                ],
+                'activeScanningEnabled' => (bool) config('security.active_scan_enabled'),
+            ],
         ]]);
+    }
+
+    private function presentSecurityScan(SecurityScan $scan): array
+    {
+        return [
+            'id' => $scan->id,
+            'provider' => $scan->provider,
+            'mode' => $scan->scan_mode,
+            'environment' => $scan->target_environment,
+            'targetUrl' => $scan->target_url,
+            'revision' => $scan->revision,
+            'status' => $scan->status,
+            'summary' => $scan->summary,
+            'findingsCount' => (int) ($scan->findings_count ?? $scan->findings()->count()),
+            'evidenceStored' => $scan->report_path !== null,
+            'completedAt' => $scan->completed_at?->toISOString(),
+            'isFresh' => $scan->completed_at?->greaterThan(now()->subDays(7)) ?? false,
+        ];
+    }
+
+    private function presentSecurityFinding(SecurityFinding $finding): array
+    {
+        return [
+            'id' => $finding->id,
+            'externalId' => $finding->external_id,
+            'title' => $finding->title,
+            'description' => $finding->description,
+            'severity' => $finding->severity,
+            'confidence' => $finding->confidence,
+            'status' => $finding->status,
+            'owaspCategory' => $finding->owasp_category,
+            'cwe' => $finding->cwe,
+            'method' => $finding->http_method,
+            'endpoint' => $finding->endpoint,
+            'evidenceSummary' => $finding->evidence_summary,
+            'remediation' => $finding->remediation,
+            'lastSeenAt' => $finding->last_seen_at?->toISOString(),
+            'retestedAt' => $finding->retested_at?->toISOString(),
+        ];
     }
 
     private function documentList(Request $request, bool $archived)

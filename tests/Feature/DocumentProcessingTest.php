@@ -2,214 +2,203 @@
 
 namespace Tests\Feature;
 
+use App\Events\DocumentSourceStored;
+use App\Jobs\AnalyzeRikmsDocument;
+use App\Jobs\ProcessDocumentJob;
+use App\Models\Agency;
 use App\Models\Document;
 use App\Models\User;
+use App\Services\DocumentAiAnalysisService;
 use App\Services\DocumentProcessingService;
+use App\Services\DocumentTextExtractionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Mockery\MockInterface;
+use RuntimeException;
 use Tests\TestCase;
-use Exception;
 
 class DocumentProcessingTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected $seed = true;
-
-    public function test_document_processing_pipeline_success(): void
+    public function test_stored_document_event_queues_processing_when_enabled(): void
     {
-        Storage::fake('local');
-        $user = User::where('email', 'test@example.com')->firstOrFail();
-        $file = UploadedFile::fake()->create('test-document.pdf', 50, 'application/pdf');
+        Queue::fake();
+        config(['rikms.document_processing.auto_queue' => true]);
 
-        $document = Document::create([
-            'agency_id' => $user->agency_id,
-            'uploaded_by' => $user->id,
-            'document_type' => Document::RESEARCH_STUDY,
-            'title' => 'Sample Research Title',
-            'file_path' => $file->store('research-documents', 'local'),
-            'original_filename' => 'test-document.pdf',
-            'mime_type' => 'application/pdf',
-            'file_size' => $file->getSize(),
-        ]);
+        DocumentSourceStored::dispatch(123);
 
-        $processor = resolve(DocumentProcessingService::class);
-        $processor->process($document);
-
-        $document->refresh();
-
-        // Stage 1 Verification
-        $this->assertEquals('completed', $document->processing_status);
-        $this->assertEquals('passed', $document->integrity_status);
-        $this->assertEquals('passed', $document->malware_status);
-        $this->assertNotNull($document->hash);
-        $this->assertEquals(hash_file('sha256', Storage::disk('local')->path($document->file_path)), $document->hash);
-
-        // Stage 2 Verification (Extracted Text & Cleaned Text)
-        $this->assertNotNull($document->extracted_text);
-        $this->assertStringContainsString('Sample Research Title', $document->extracted_text);
-
-        // Stage 2 Verification (Chunking)
-        $this->assertGreaterThan(0, $document->chunks()->count());
-        $firstChunk = $document->chunks()->first();
-        $this->assertNotNull($firstChunk->content);
-        $this->assertEquals(0, $firstChunk->chunk_index);
+        Queue::assertPushedOn('default', ProcessDocumentJob::class, function (ProcessDocumentJob $job): bool {
+            return $job->documentId === 123;
+        });
     }
 
-    public function test_document_processing_pipeline_malware_detection(): void
+    public function test_valid_pdf_is_hashed_extracted_and_chunked_without_fabricated_text(): void
     {
-        Storage::fake('local');
-        $user = User::where('email', 'test@example.com')->firstOrFail();
+        Storage::fake('documents');
+        config(['rikms.documents_disk' => 'documents', 'services.clamav.enabled' => false, 'services.clamav.required' => false]);
+        $text = str_repeat('Verified regional research evidence with human review. ', 80);
+        $this->mock(DocumentTextExtractionService::class, function (MockInterface $mock) use ($text): void {
+            $mock->shouldReceive('extract')->once()->andReturn(['method' => 'embedded_pdf_text', 'text' => $text]);
+        });
+        $document = $this->documentWithContents("%PDF-1.4\nverified test document\n%%EOF");
 
-        // Create a fake file
-        $file = UploadedFile::fake()->create('malware.pdf', 10);
-        $path = $file->store('research-documents', 'local');
+        resolve(DocumentProcessingService::class)->process($document);
+        $document->refresh();
 
-        // Write EICAR signature directly to the stored file on the fake disk
-        $eicarSignature = 'EICAR-STANDARD-ANTIVIRUS-TEST-FILE';
-        Storage::disk('local')->put($path, $eicarSignature);
+        $this->assertSame('completed', $document->processing_status);
+        $this->assertSame('passed', $document->integrity_status);
+        $this->assertSame('unavailable', $document->malware_status);
+        $this->assertSame('embedded_pdf_text', $document->extraction_method);
+        $this->assertSame(trim($text), $document->extracted_text);
+        $this->assertSame(hash('sha256', "%PDF-1.4\nverified test document\n%%EOF"), $document->hash);
+        $this->assertGreaterThan(1, $document->chunks()->count());
+    }
 
-        $document = Document::create([
-            'agency_id' => $user->agency_id,
-            'uploaded_by' => $user->id,
-            'document_type' => Document::RESEARCH_STUDY,
-            'title' => 'Malicious File',
-            'file_path' => $path,
-            'original_filename' => 'malware.pdf',
-            'mime_type' => 'application/pdf',
-            'file_size' => $file->getSize(),
+    public function test_staged_ai_analysis_is_released_only_after_source_safety_processing(): void
+    {
+        Storage::fake('documents');
+        Queue::fake();
+        config([
+            'rikms.documents_disk' => 'documents',
+            'rikms.ai.enabled' => true,
+            'services.clamav.enabled' => false,
+            'services.clamav.required' => false,
         ]);
+        $this->mock(DocumentTextExtractionService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('extract')->once()->andReturn([
+                'method' => 'embedded_pdf_text',
+                'text' => str_repeat('Verified safety-gated research text. ', 40),
+            ]);
+        });
+        $document = $this->documentWithContents("%PDF-1.4\nverified AI source\n%%EOF");
+        $analyses = resolve(DocumentAiAnalysisService::class);
+        $analysis = $analyses->stage($document, User::query()->findOrFail($document->uploaded_by));
 
-        $processor = resolve(DocumentProcessingService::class);
+        Queue::assertNotPushed(AnalyzeRikmsDocument::class);
+        (new ProcessDocumentJob($document->id))->handle(resolve(DocumentProcessingService::class), $analyses);
 
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage("Security Threat: Malware detected");
+        $this->assertSame('queued', $analysis->fresh()->status);
+        $this->assertSame('passed', $document->fresh()->integrity_status);
+        Queue::assertPushedOn('ai', AnalyzeRikmsDocument::class, function (AnalyzeRikmsDocument $job) use ($analysis): bool {
+            return $job->analysisId === $analysis->id;
+        });
+    }
+
+    public function test_failed_source_safety_marks_staged_ai_analysis_failed_without_dispatch(): void
+    {
+        Storage::fake('documents');
+        Queue::fake();
+        config(['rikms.documents_disk' => 'documents', 'rikms.ai.enabled' => true]);
+        $document = $this->documentWithContents('not a PDF');
+        $analysis = resolve(DocumentAiAnalysisService::class)
+            ->stage($document, User::query()->findOrFail($document->uploaded_by));
+        $job = new ProcessDocumentJob($document->id);
 
         try {
-            $processor->process($document);
-        } finally {
+            $job->handle(resolve(DocumentProcessingService::class), resolve(DocumentAiAnalysisService::class));
+            $this->fail('Invalid source should fail safety processing.');
+        } catch (RuntimeException $exception) {
+            $job->failed($exception);
+        }
+
+        $analysis = $analysis->fresh();
+        $this->assertSame('failed', $analysis->status);
+        $this->assertSame('DocumentSafetyProcessingFailed', $analysis->error_code);
+        Queue::assertNotPushed(AnalyzeRikmsDocument::class);
+    }
+
+    public function test_replaced_source_invalidates_staged_analysis_and_creates_new_hash(): void
+    {
+        Storage::fake('documents');
+        Queue::fake();
+        config(['rikms.documents_disk' => 'documents', 'rikms.ai.enabled' => true]);
+        $document = $this->documentWithContents("%PDF-1.4\nfirst source\n%%EOF");
+        $user = User::query()->findOrFail($document->uploaded_by);
+        $analyses = resolve(DocumentAiAnalysisService::class);
+        $first = $analyses->stage($document, $user);
+
+        Storage::disk('documents')->put($document->file_path, "%PDF-1.4\nreplacement source\n%%EOF");
+        $document->update([
+            'integrity_status' => 'pending',
+            'malware_status' => 'pending',
+            'processing_status' => 'pending',
+        ]);
+        $second = $analyses->stage($document->fresh(), $user);
+
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertNotSame($first->source_hash, $second->source_hash);
+        $this->assertSame('failed', $first->fresh()->status);
+        $this->assertSame('SourceReplaced', $first->fresh()->error_code);
+        Queue::assertNotPushed(AnalyzeRikmsDocument::class);
+    }
+
+    public function test_missing_ocr_is_reported_honestly_and_never_generates_placeholder_research(): void
+    {
+        Storage::fake('documents');
+        config(['rikms.documents_disk' => 'documents', 'services.clamav.enabled' => false, 'services.clamav.required' => false]);
+        $this->mock(DocumentTextExtractionService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('extract')->once()->andReturnNull();
+        });
+        $document = $this->documentWithContents("%PDF-1.4\nscanned image placeholder\n%%EOF");
+
+        resolve(DocumentProcessingService::class)->process($document);
+        $document->refresh();
+
+        $this->assertSame('needs_ocr', $document->processing_status);
+        $this->assertNull($document->extracted_text);
+        $this->assertNull($document->extraction_method);
+        $this->assertSame(0, $document->chunks()->count());
+        $this->assertStringContainsString('No reliable embedded text', $document->processing_error);
+    }
+
+    public function test_eicar_signature_fails_closed_before_extraction(): void
+    {
+        Storage::fake('documents');
+        config(['rikms.documents_disk' => 'documents', 'services.clamav.enabled' => false, 'services.clamav.required' => false]);
+        $this->mock(DocumentTextExtractionService::class, function (MockInterface $mock): void {
+            $mock->shouldNotReceive('extract');
+        });
+        $document = $this->documentWithContents("%PDF-1.4\nEICAR-STANDARD-ANTIVIRUS-TEST-FILE\n%%EOF");
+
+        try {
+            resolve(DocumentProcessingService::class)->process($document);
+            $this->fail('Malware signature should stop processing.');
+        } catch (RuntimeException) {
             $document->refresh();
-            // Verify status was set to failed
-            $this->assertEquals('failed', $document->processing_status);
-            $this->assertEquals('failed', $document->malware_status);
-            $this->assertEquals('passed', $document->integrity_status); // Integrity passed, but malware failed
+            $this->assertSame('failed', $document->processing_status);
+            $this->assertSame('passed', $document->integrity_status);
+            $this->assertSame('failed', $document->malware_status);
+            $this->assertNull($document->extracted_text);
         }
     }
 
-    public function test_spa_endpoints_upload_draft_and_analyze(): void
+    private function documentWithContents(string $contents): Document
     {
-        Storage::fake('local');
-        $user = User::where('email', 'test@example.com')->firstOrFail();
-        $file = UploadedFile::fake()->create('sample-paper.pdf', 10, 'application/pdf');
-
-        $response = $this->actingAs($user)->postJson('/api/rikms/documents/upload-draft', [
-            'document_type' => 'research',
-            'document_file' => $file,
+        $agency = Agency::query()->firstOrCreate(['name' => 'Processing Test Agency'], [
+            'abbreviation' => 'PTA',
+            'type' => 'Government Agency',
+            'is_active' => true,
         ]);
-
-        $response->assertOk();
-        $response->assertJsonStructure(['document_id', 'original_filename', 'file_size']);
-        $documentId = $response->json('document_id');
-
-        $document = Document::findOrFail($documentId);
-        $this->assertEquals('draft', $document->status);
-
-        $document->update([
-            'extracted_text' => "TITLE: AI Innovation in Regional Agriculture\nABSTRACT: This research discusses how Artificial Intelligence and farming technologies improve agricultural output in Region XI."
+        $user = User::factory()->create([
+            'role' => 'agency_admin',
+            'agency_id' => $agency->id,
+            'is_active' => true,
+            'must_change_password' => false,
         ]);
+        $path = 'research-documents/'.uniqid('processing-', true).'.pdf';
+        Storage::disk('documents')->put($path, $contents);
 
-        $analyzeResponse = $this->actingAs($user)->postJson("/api/rikms/documents/{$documentId}/analyze");
-
-        $analyzeResponse->assertOk();
-        $analyzeResponse->assertJsonFragment([
-            'title' => 'AI Innovation in Regional Agriculture',
-        ]);
-        $this->assertStringContainsString('Artificial Intelligence and farming technologies', $analyzeResponse->json('abstract'));
-
-        $suggestedSdgs = collect($analyzeResponse->json('suggested_sdgs'))->pluck('sdg')->toArray();
-        $this->assertContains(2, $suggestedSdgs); // Agriculture / hunger matched
-        $this->assertContains(9, $suggestedSdgs); // Technology / innovation matched
-    }
-
-    public function test_document_approve_reject_and_rerun_ai(): void
-    {
-        Storage::fake('local');
-        $user = User::where('email', 'test@example.com')->firstOrFail();
-        $file = UploadedFile::fake()->create('sample-paper.pdf', 10, 'application/pdf');
-
-        $document = Document::create([
+        return Document::query()->create([
             'agency_id' => $user->agency_id,
             'uploaded_by' => $user->id,
             'document_type' => Document::RESEARCH_STUDY,
-            'title' => 'Initial Title',
-            'file_path' => $file->store('research-documents', 'local'),
-            'original_filename' => 'sample-paper.pdf',
+            'title' => 'Processing test document',
+            'file_path' => $path,
+            'original_filename' => 'processing-test.pdf',
             'mime_type' => 'application/pdf',
-            'file_size' => $file->getSize(),
-            'status' => 'pending',
+            'file_size' => strlen($contents),
         ]);
-
-        $document->update([
-            'extracted_text' => "TITLE: Real Extracted Title\nABSTRACT: This is the real parsed abstract body.\nKEYWORDS: machine learning, regional analysis"
-        ]);
-        $response = $this->actingAs($user)->postJson("/api/rikms/documents/{$document->id}/re-run-ai");
-        $response->assertOk();
-        $response->assertJsonFragment([
-            'title' => 'Real Extracted Title',
-        ]);
-
-        $document->refresh();
-        $this->assertEquals('Real Extracted Title', $document->metadata->title);
-
-        $approveResponse = $this->actingAs($user)->postJson("/api/rikms/documents/{$document->id}/approve");
-        $approveResponse->assertOk()->assertJson(['status' => 'success', 'document_status' => 'published']);
-
-        $document->refresh();
-        $this->assertEquals('published', $document->status);
-        $this->assertNotNull($document->published_at);
-
-        $rejectResponse = $this->actingAs($user)->postJson("/api/rikms/documents/{$document->id}/reject", ['reason' => 'Missing budget info']);
-        $rejectResponse->assertOk()->assertJson(['status' => 'success', 'document_status' => 'rejected']);
-
-        $document->refresh();
-        $this->assertEquals('rejected', $document->status);
-    }
-
-    public function test_spa_visibility_filtering(): void
-    {
-        $agencyAdmin = User::where('email', 'test@example.com')->firstOrFail();
-
-        $draftDoc1 = Document::create([
-            'agency_id' => $agencyAdmin->agency_id,
-            'uploaded_by' => $agencyAdmin->id,
-            'document_type' => Document::RESEARCH_STUDY,
-            'title' => 'Agency Admin Draft Research',
-            'status' => 'draft',
-        ]);
-
-        $draftDoc2 = Document::create([
-            'agency_id' => $agencyAdmin->agency_id + 1,
-            'uploaded_by' => $agencyAdmin->id + 1,
-            'document_type' => Document::RESEARCH_STUDY,
-            'title' => 'Other Agency Draft Research',
-            'status' => 'draft',
-        ]);
-
-        $guestResponse = $this->getJson('/api/rikms/bootstrap');
-        $guestResponse->assertOk();
-
-        $guestResearchData = collect($guestResponse->json('researchData'));
-        $this->assertEmpty($guestResearchData->where('title', 'Agency Admin Draft Research'));
-        $this->assertEmpty($guestResearchData->where('title', 'Other Agency Draft Research'));
-        $this->assertEmpty($guestResponse->json('accessRequests'));
-        $this->assertEmpty($guestResponse->json('auditLogs'));
-
-        $adminResponse = $this->actingAs($agencyAdmin)->getJson('/api/rikms/bootstrap');
-        $adminResponse->assertOk();
-
-        $adminResearchData = collect($adminResponse->json('researchData'));
-        $this->assertNotEmpty($adminResearchData->where('title', 'Agency Admin Draft Research'));
-        $this->assertEmpty($adminResearchData->where('title', 'Other Agency Draft Research'));
     }
 }

@@ -29,6 +29,7 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="RIKMS_DOCUMENT_PROCESSING_AUTO_QUEUE" value="false"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="SESSION_COOKIE" value="rikms-session"/>
         <env name="TRUSTED_PROXIES" value="*"/>

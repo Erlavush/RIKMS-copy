@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\AnalyzeRikmsDocument;
+use App\Jobs\ProcessDocumentJob;
 use App\Models\Document;
 use App\Models\DocumentAiAnalysis;
 use App\Models\User;
@@ -15,20 +16,48 @@ class DocumentAiAnalysisService
 {
     public function queue(Document $document, ?User $requester = null): DocumentAiAnalysis
     {
+        $analysis = $this->stage($document, $requester);
+        $document->refresh();
+
+        if ($this->sourceSafetyReady($document)) {
+            AnalyzeRikmsDocument::dispatch($analysis->id)->onQueue('ai');
+        } else {
+            ProcessDocumentJob::dispatch($document->id)->onQueue('default');
+        }
+
+        return $analysis;
+    }
+
+    public function stage(Document $document, ?User $requester = null): DocumentAiAnalysis
+    {
         if (! config('rikms.ai.enabled')) {
             throw ValidationException::withMessages(['ai' => 'AI document assistance is currently disabled.']);
         }
         if (! $document->file_path || ! Storage::disk(DocumentStorage::disk())->exists($document->file_path)) {
             throw ValidationException::withMessages(['document_file' => 'Upload a source PDF before requesting analysis.']);
         }
+        if ($document->integrity_status === 'failed' || $document->malware_status === 'failed') {
+            throw ValidationException::withMessages([
+                'document_file' => 'The source failed document safety processing and cannot be analyzed.',
+            ]);
+        }
 
+        $sourceHash = $this->sourceHash($document);
         $active = DocumentAiAnalysis::query()
             ->where('document_id', $document->id)
             ->whereIn('status', ['queued', 'processing'])
             ->latest()
             ->first();
-        if ($active) {
+        if ($active && hash_equals($active->source_hash, $sourceHash)) {
             return $active;
+        }
+        if ($active) {
+            $active->update([
+                'status' => 'failed',
+                'error_code' => 'SourceReplaced',
+                'error_message' => 'The source changed before analysis completed. No suggestions were accepted.',
+                'completed_at' => now(),
+            ]);
         }
 
         $analysis = DocumentAiAnalysis::query()->create([
@@ -37,12 +66,36 @@ class DocumentAiAnalysisService
             'status' => 'queued',
             'model' => (string) config('rikms.ai.model'),
             'prompt_version' => (string) config('rikms.ai.prompt_version'),
-            'source_hash' => $this->sourceHash($document),
+            'source_hash' => $sourceHash,
         ]);
 
-        AnalyzeRikmsDocument::dispatch($analysis->id)->onQueue('ai');
-
         return $analysis;
+    }
+
+    public function dispatchStagedAfterValidation(Document $document): void
+    {
+        $document->refresh();
+        if (! $this->sourceSafetyReady($document)) {
+            throw new RuntimeException('AI analysis cannot start before source safety processing passes.');
+        }
+
+        DocumentAiAnalysis::query()
+            ->where('document_id', $document->id)
+            ->where('status', 'queued')
+            ->eachById(function (DocumentAiAnalysis $analysis): void {
+                AnalyzeRikmsDocument::dispatch($analysis->id)->onQueue('ai');
+            });
+    }
+
+    public function assertReadyForAnalysis(DocumentAiAnalysis $analysis): void
+    {
+        $document = Document::query()->findOrFail($analysis->document_id);
+        if (! $this->sourceSafetyReady($document)) {
+            throw new RuntimeException('AI analysis cannot start before source safety processing passes.');
+        }
+        if (! hash_equals($analysis->source_hash, $this->sourceHash($document))) {
+            throw new RuntimeException('AI analysis source changed after the task was created.');
+        }
     }
 
     /** @return array<string, mixed>|null */
@@ -98,5 +151,11 @@ class DocumentAiAnalysisService
         } finally {
             fclose($stream);
         }
+    }
+
+    private function sourceSafetyReady(Document $document): bool
+    {
+        return $document->integrity_status === 'passed'
+            && in_array($document->malware_status, ['passed', 'unavailable'], true);
     }
 }

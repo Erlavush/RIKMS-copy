@@ -3,6 +3,7 @@
 node_modules
 vendor
 .env
+gha-creds-*.json
 database/*.sqlite
 storage/app/private/*
 storage/logs/*
@@ -20,4 +21,7 @@ phpunit.xml
 eslint.config.js
 vitest.config.ts
 deploy-to-gcp.sh
+deploy-staging-to-gcp.sh
+configure-github-security-oidc.sh
 docs
+security

@@ -37,10 +37,11 @@ class DocumentApiController extends RikmsApiController
         $this->audit->log($document->status === 'pending' ? 'document submitted' : 'document draft created', $document, [], $request);
         $analysis = null;
         if ($document->file_path && config('rikms.ai.enabled') && config('rikms.ai.auto_queue')) {
-            $analysis = $this->aiAnalyses->queue($document, $request->user());
+            $analysis = $this->aiAnalyses->stage($document, $request->user());
             $this->audit->log('document AI analysis queued', $document, [
                 'analysis_id' => $analysis->id,
                 'model' => $analysis->model,
+                'source_safety_gate' => 'pending',
             ], $request);
         }
         if ($document->file_path) {
@@ -82,10 +83,11 @@ class DocumentApiController extends RikmsApiController
         $analysis = null;
         if ($oldFilePath !== $document->file_path && $document->file_path
             && config('rikms.ai.enabled') && config('rikms.ai.auto_queue')) {
-            $analysis = $this->aiAnalyses->queue($document, $request->user());
+            $analysis = $this->aiAnalyses->stage($document, $request->user());
             $this->audit->log('document AI analysis queued', $document, [
                 'analysis_id' => $analysis->id,
                 'model' => $analysis->model,
+                'source_safety_gate' => 'pending',
             ], $request);
         }
         if ($oldFilePath !== $document->file_path && $document->file_path) {
@@ -177,6 +179,10 @@ class DocumentApiController extends RikmsApiController
     {
         $this->authorize('update', $document);
         $this->versions->restore($document, $version);
+        $document->refresh();
+        if ($document->file_path) {
+            DocumentSourceStored::dispatch($document->id, true);
+        }
         $document->downloadGrants()->whereNull('revoked_at')->update(['revoked_at' => now()]);
         $this->accessRequests->cancelPending($document, $request->user(), 'The document version changed and must complete review again.');
         $this->audit->log('document version restored', $document, ['version' => $version->version_number], $request);

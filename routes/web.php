@@ -9,9 +9,13 @@ use App\Http\Controllers\Api\DocumentApiController;
 use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Api\TwoFactorSetupController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\SpaController;
 use App\Http\Controllers\TwoFactorChallengeController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/up', fn () => response()->json(['status' => 'up']))->name('health.liveness');
+Route::get('/ready', HealthController::class)->name('health.readiness');
 
 Route::get('/api/rikms/bootstrap', [PublicApiController::class, 'bootstrap'])->middleware('throttle:public-read')->name('api.rikms.bootstrap');
 Route::get('/api/rikms/public/documents', [PublicApiController::class, 'index'])->middleware('throttle:public-read')->name('api.rikms.public.documents.index');
@@ -147,12 +151,4 @@ Route::middleware(['auth', 'role:agency_admin', 'password.changed'])->group(func
 
 Route::middleware(['auth', 'role:super_admin', 'password.changed', 'two-factor'])->group(function (): void {
     Route::get('/admin/{any?}', SpaController::class)->where('any', '.*')->name('admin.spa');
-});
-
-Route::middleware('auth')->group(function (): void {
-    Route::post('/api/rikms/documents/{document}/analyze', [\App\Http\Controllers\SpaDocumentController::class, 'runAiAnalysis'])->name('api.rikms.documents.analyze');
-    Route::post('/api/rikms/documents/upload-draft', [\App\Http\Controllers\SpaDocumentController::class, 'uploadDraft'])->name('api.rikms.documents.upload-draft');
-    Route::post('/api/rikms/documents/{document}/approve', [\App\Http\Controllers\SpaDocumentController::class, 'approve'])->name('api.rikms.documents.approve');
-    Route::post('/api/rikms/documents/{document}/reject', [\App\Http\Controllers\SpaDocumentController::class, 'reject'])->name('api.rikms.documents.reject');
-    Route::post('/api/rikms/documents/{document}/re-run-ai', [\App\Http\Controllers\SpaDocumentController::class, 'reRunAi'])->name('api.rikms.documents.re-run-ai');
 });

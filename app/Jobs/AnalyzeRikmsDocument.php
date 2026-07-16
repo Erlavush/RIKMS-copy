@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\DocumentAiAnalysis;
+use App\Services\DocumentAiAnalysisService;
 use App\Services\VertexDocumentAnalysisService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -33,22 +34,23 @@ class AnalyzeRikmsDocument implements ShouldQueue
         return [15, 60, 180];
     }
 
-    public function handle(VertexDocumentAnalysisService $vertex): void
+    public function handle(VertexDocumentAnalysisService $vertex, DocumentAiAnalysisService $gate): void
     {
         $analysis = DocumentAiAnalysis::query()->with('document')->findOrFail($this->analysisId);
         if (in_array($analysis->status, ['completed', 'reviewed'], true)) {
             return;
         }
 
-        $analysis->update([
-            'status' => 'processing',
-            'started_at' => $analysis->started_at ?? now(),
-            'error_code' => null,
-            'error_message' => null,
-        ]);
-
         try {
+            $gate->assertReadyForAnalysis($analysis);
+            $analysis->update([
+                'status' => 'processing',
+                'started_at' => $analysis->started_at ?? now(),
+                'error_code' => null,
+                'error_message' => null,
+            ]);
             $result = $vertex->analyze($analysis->document);
+            $gate->assertReadyForAnalysis($analysis);
             $suggestions = $result['suggestions'];
             $analysis->update([
                 'status' => 'completed',

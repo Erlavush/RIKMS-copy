@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Agency;
 use App\Models\Document;
 use App\Models\User;
-use App\Models\Agency;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -100,11 +100,11 @@ class BrokenAccessControlTest extends TestCase
         ]);
 
         // Attempting to approve from user1 (from Agency 1) should yield 403 Forbidden
-        $approveResponse = $this->actingAs($user1)->postJson("/api/rikms/documents/{$document->id}/approve");
+        $approveResponse = $this->actingAs($user1)->postJson("/api/rikms/admin/documents/{$document->id}/approve");
         $approveResponse->assertStatus(403);
 
         // Attempting to reject from user1 (from Agency 1) should yield 403 Forbidden
-        $rejectResponse = $this->actingAs($user1)->postJson("/api/rikms/documents/{$document->id}/reject", ['reason' => 'Unauthorized']);
+        $rejectResponse = $this->actingAs($user1)->postJson("/api/rikms/admin/documents/{$document->id}/reject", ['reason' => 'Unauthorized access attempt']);
         $rejectResponse->assertStatus(403);
     }
 }

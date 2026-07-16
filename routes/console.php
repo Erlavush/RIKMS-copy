@@ -34,3 +34,4 @@ Artisan::command('rikms:weekly-digests', function (UserNotificationService $noti
 })->purpose('Send weekly RIKMS agency activity digests');
 
 Schedule::command('rikms:weekly-digests')->weeklyOn(1, '08:00')->timezone('Asia/Manila')->withoutOverlapping();
+Schedule::command('rikms:security-import-pending --limit=20')->everyFiveMinutes()->withoutOverlapping();

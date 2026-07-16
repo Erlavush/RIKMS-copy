@@ -6,51 +6,43 @@ use Tests\TestCase;
 
 class SecurityConfigurationTest extends TestCase
 {
-    /**
-     * Assert that session cookies are configured securely to mitigate XSS and CSRF.
-     */
-    public function test_session_cookie_security_configurations(): void
+    public function test_session_cookie_contract_enforces_http_only_and_same_site(): void
     {
-        $session = config('session');
-
-        // 1. HttpOnly must be true to prevent JavaScript document.cookie access (Mitigates Session Hijacking via XSS)
-        $this->assertTrue(
-            $session['http_only'],
-            'Security Hazard: Session cookie http_only flag is disabled! JavaScript must not access session identifier cookies.'
-        );
-
-        // 2. SameSite must be set to 'lax' or 'strict' (Mitigates CSRF attacks)
-        $sameSite = strtolower($session['same_site'] ?? '');
-        $this->assertTrue(
-            in_array($sameSite, ['lax', 'strict'], true),
-            'Security Hazard: SameSite attribute must be set to Lax or Strict to protect against Cross-Site Request Forgery.'
-        );
+        $this->assertTrue(config('session.http_only'));
+        $this->assertContains(strtolower((string) config('session.same_site')), ['lax', 'strict']);
     }
 
-    /**
-     * Assert that production configuration settings are enforced securely.
-     */
-    public function test_production_environment_sanity_checks(): void
+    public function test_cloud_deployment_defaults_to_production_and_enforces_secure_runtime_settings(): void
     {
-        // Path to the example environment configuration
-        $envExamplePath = base_path('.env.example');
+        $deployment = file_get_contents(base_path('deploy-to-gcp.sh'));
+        $staging = file_get_contents(base_path('deploy-staging-to-gcp.sh'));
 
-        if (file_exists($envExamplePath)) {
-            $content = file_get_contents($envExamplePath);
+        $this->assertIsString($deployment);
+        $this->assertIsString($staging);
+        $this->assertStringContainsString('APP_ENVIRONMENT="${APP_ENVIRONMENT:-production}"', $deployment);
+        $this->assertStringContainsString('APP_ENV: ${APP_ENVIRONMENT}', $deployment);
+        $this->assertStringContainsString('export APP_ENVIRONMENT=staging', $staging);
+        $this->assertStringContainsString('APP_DEBUG: "false"', $deployment);
+        $this->assertStringContainsString('SESSION_SECURE_COOKIE: "true"', $deployment);
+        $this->assertStringContainsString('SESSION_HTTP_ONLY: "true"', $deployment);
+    }
 
-            // 1. Verify APP_DEBUG defaults to false in .env.example
-            $this->assertStringContainsString(
-                'APP_DEBUG=false',
-                $content,
-                'Security Warning: .env.example should default APP_DEBUG to false so production deployments are secure by default.'
-            );
+    public function test_generated_security_evidence_is_ignored_and_not_publicly_served(): void
+    {
+        $ignore = file_get_contents(base_path('.gitignore'));
+        $this->assertIsString($ignore);
+        $this->assertStringContainsString('/storage/app/security/', $ignore);
+        $this->assertDirectoryDoesNotExist(public_path('security'));
+    }
 
-            // 2. Verify SESSION_SECURE_COOKIE defaults to true in .env.example
-            $this->assertStringContainsString(
-                'SESSION_SECURE_COOKIE=true',
-                $content,
-                'Security Warning: .env.example should default SESSION_SECURE_COOKIE to true to enforce transport encryption for session cookies.'
-            );
-        }
+    public function test_windows_teammate_workflow_is_versioned_and_ci_verified(): void
+    {
+        $workflow = file_get_contents(base_path('.github/workflows/ci.yml'));
+        $this->assertIsString($workflow);
+        $this->assertStringContainsString('windows-compatibility:', $workflow);
+        $this->assertStringContainsString('runs-on: windows-latest', $workflow);
+        $this->assertFileExists(base_path('scripts/windows/setup-local.ps1'));
+        $this->assertFileExists(base_path('scripts/windows/security-scan.ps1'));
+        $this->assertFileExists(base_path('docs/WINDOWS_DEVELOPMENT.md'));
     }
 }

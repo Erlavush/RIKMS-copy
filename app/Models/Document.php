@@ -106,6 +106,7 @@ class Document extends Model
         'malware_status',
         'integrity_status',
         'processing_status',
+        'extraction_method',
         'extracted_text',
         'processing_error',
     ];

@@ -1,0 +1,84 @@
+name: Authorized staging security assessment
+
+on:
+  schedule:
+    - cron: '17 18 * * 1'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Passive is the default; active requires the synthetic staging secrets.
+        required: true
+        type: choice
+        default: passive
+        options:
+          - passive
+          - active
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: rikms-staging-security
+  cancel-in-progress: false
+
+jobs:
+  assess:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: security-staging
+    env:
+      TARGET: ${{ vars.RIKMS_STAGING_URL }}
+      SECURITY_ALLOWED_TARGETS: ${{ vars.RIKMS_STAGING_URL }}
+      SECURITY_PRODUCTION_HOST: rikms.v3ra.net
+      MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'passive' }}
+      SECURITY_ACTIVE_SCAN_ENABLED: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'active' && 'true' || 'false' }}
+      RIKMS_SCAN_EMAIL: ${{ secrets.RIKMS_STAGING_SCAN_EMAIL }}
+      RIKMS_SCAN_PASSWORD: ${{ secrets.RIKMS_STAGING_SCAN_PASSWORD }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Validate locked staging target
+        run: |
+          test -n "$TARGET"
+          test "$TARGET" != "https://rikms.v3ra.net"
+
+      - name: Run bounded assessment
+        id: scan
+        continue-on-error: true
+        run: |
+          set +e
+          python3 security/rikms_security_scan.py \
+            --target="$TARGET" \
+            --environment=staging \
+            --mode="$MODE" \
+            --revision="$GITHUB_SHA" \
+            --output=storage/app/security/reports/native.json
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SECURITY_SCANNER_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Upload private evidence for scheduled import
+        run: |
+          test -n "${{ vars.GCP_SECURITY_REPORTS_BUCKET }}"
+          gcloud storage cp \
+            storage/app/security/reports/native.json \
+            "gs://${{ vars.GCP_SECURITY_REPORTS_BUCKET }}/incoming/staging/${GITHUB_SHA}/native-${GITHUB_RUN_ID}.json"
+
+      - name: Enforce Critical and High release gate
+        run: test "${{ steps.scan.outputs.exit_code }}" = "0"

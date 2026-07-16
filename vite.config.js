@@ -15,11 +15,14 @@ export default defineConfig({
     ],
     resolve: {
         alias: {
-            'figma:asset': fileURLToPath(new URL('./resources/js/assets', import.meta.url)).replace(/\\/g, '/'),
+            "figma:asset": fileURLToPath(new URL("./resources/js/assets", import.meta.url)).replace(
+                /\\/g,
+                "/",
+            ),
         },
     },
     server: {
-        host: '127.0.0.1',
+        host: "127.0.0.1",
         watch: {
             ignored: ["**/storage/framework/views/**"],
         },

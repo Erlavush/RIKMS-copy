@@ -1,4 +1,14 @@
-import { AlertTriangle, Clock3, KeyRound, ShieldAlert, ShieldCheck, UserCheck } from "lucide-react";
+import {
+    Activity,
+    AlertTriangle,
+    Bug,
+    Clock3,
+    Database,
+    KeyRound,
+    ShieldAlert,
+    ShieldCheck,
+    UserCheck,
+} from "lucide-react";
 
 import type { DataResponse } from "../../lib/admin-api";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Panel, StatusBadge } from "./AdminUi";
@@ -30,6 +40,47 @@ interface SecurityEvent {
     createdAt?: string;
 }
 
+interface SecurityScanRecord {
+    id: number;
+    provider: string;
+    mode: string;
+    environment: string;
+    targetUrl: string;
+    revision?: string | null;
+    status: string;
+    summary?: Record<string, number> | null;
+    findingsCount: number;
+    evidenceStored: boolean;
+    completedAt?: string | null;
+    isFresh: boolean;
+}
+
+interface SecurityFindingRecord {
+    id: number;
+    externalId?: string | null;
+    title: string;
+    description?: string | null;
+    severity: string;
+    confidence?: string | null;
+    status: string;
+    owaspCategory?: string | null;
+    cwe?: string | null;
+    method?: string | null;
+    endpoint?: string | null;
+    evidenceSummary?: string | null;
+    remediation?: string | null;
+    lastSeenAt?: string | null;
+    retestedAt?: string | null;
+}
+
+interface SecurityAssessment {
+    latestScan: SecurityScanRecord | null;
+    scans: SecurityScanRecord[];
+    findings: SecurityFindingRecord[];
+    openCounts: Record<"critical" | "high" | "medium" | "low" | "info", number>;
+    activeScanningEnabled: boolean;
+}
+
 interface SecurityData {
     activeUsers: number;
     admins: number;
@@ -40,6 +91,7 @@ interface SecurityData {
     securityEvents: SecurityEvent[];
     passwordPolicy: string | Record<string, unknown> | null;
     sessionLifetime: number | string;
+    assessment: SecurityAssessment;
 }
 
 function policyEntries(policy: SecurityData["passwordPolicy"]): Array<[string, string]> {
@@ -72,6 +124,7 @@ export function SecurityCenter() {
             />
         );
 
+    const latestScan = data.assessment?.latestScan;
     const cards = [
         {
             label: "Active users",
@@ -107,7 +160,7 @@ export function SecurityCenter() {
         <div className="mx-auto max-w-[1376px] space-y-6">
             <PageHeader
                 title="Security Center"
-                description="Read-only security posture based on real accounts, login events, and configured policies."
+                description="Read-only security posture, sanitized assessment evidence, authentication events, and configured controls."
             />
             {error && <ErrorState message={`Security data may be stale: ${error}`} onRetry={reload} />}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -123,6 +176,157 @@ export function SecurityCenter() {
                     </div>
                 ))}
             </div>
+
+            <Panel>
+                <div className="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50">
+                            <Activity className="h-5 w-5 text-indigo-700" />
+                        </div>
+                        <div>
+                            <h2 className="font-bold text-slate-900">Penetration assessment status</h2>
+                            <p className="mt-1 text-sm text-gray-500">
+                                Scanner output remains an observation until a tester manually reproduces and
+                                confirms it.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <StatusBadge status={latestScan?.status ?? "not-scanned"} />
+                        {latestScan && <StatusBadge status={latestScan.isFresh ? "fresh" : "stale"} />}
+                    </div>
+                </div>
+                {!latestScan ? (
+                    <EmptyState
+                        title="No assessment imported"
+                        description="Run the authorized local or staging scanner, then import its sanitized JSON report with the RIKMS security command."
+                    />
+                ) : (
+                    <div className="space-y-5 p-6">
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                            {(["critical", "high", "medium", "low", "info"] as const).map((severity) => (
+                                <div
+                                    key={severity}
+                                    className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+                                >
+                                    <p className="text-2xl font-bold text-slate-900">
+                                        {data.assessment.openCounts[severity] ?? 0}
+                                    </p>
+                                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                        Open {severity}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                        <dl className="grid gap-x-6 gap-y-4 rounded-xl border border-gray-200 p-5 text-sm md:grid-cols-2 xl:grid-cols-4">
+                            <div>
+                                <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                    Target
+                                </dt>
+                                <dd className="mt-1 break-all font-mono text-xs text-slate-700">
+                                    {latestScan.targetUrl}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                    Revision
+                                </dt>
+                                <dd className="mt-1 font-mono text-xs text-slate-700">
+                                    {latestScan.revision || "Not recorded"}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                    Scanner
+                                </dt>
+                                <dd className="mt-1 text-slate-700">
+                                    {latestScan.provider} · {latestScan.mode} · {latestScan.environment}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                    Completed
+                                </dt>
+                                <dd className="mt-1 text-slate-700">
+                                    {formatDate(latestScan.completedAt, true)}
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
+                )}
+            </Panel>
+
+            <Panel>
+                <div className="flex items-center gap-2.5 border-b border-gray-100 px-6 py-4">
+                    <Bug className="h-5 w-5 text-red-700" />
+                    <div>
+                        <h2 className="text-sm font-bold text-slate-900">Latest sanitized observations</h2>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                            Raw requests, cookies, tokens, passwords, and private reports are deliberately
+                            excluded.
+                        </p>
+                    </div>
+                </div>
+                {!data.assessment?.findings?.length ? (
+                    <EmptyState
+                        title="No observations in the latest scan"
+                        description="A clean automated scan is not proof that the application has no vulnerabilities."
+                    />
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                                <tr>
+                                    <th className="px-5 py-3 font-semibold">Finding</th>
+                                    <th className="px-5 py-3 font-semibold">Severity</th>
+                                    <th className="px-5 py-3 font-semibold">Location</th>
+                                    <th className="px-5 py-3 font-semibold">Status</th>
+                                    <th className="px-5 py-3 font-semibold">Last observed</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {data.assessment.findings.map((finding) => (
+                                    <tr key={finding.id} className="align-top">
+                                        <td className="max-w-xl px-5 py-4">
+                                            <p className="font-semibold text-slate-800">{finding.title}</p>
+                                            <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500">
+                                                {finding.description ||
+                                                    finding.evidenceSummary ||
+                                                    "No sanitized description supplied."}
+                                            </p>
+                                            {(finding.owaspCategory || finding.cwe) && (
+                                                <p className="mt-2 text-xs font-medium text-indigo-700">
+                                                    {[finding.owaspCategory, finding.cwe]
+                                                        .filter(Boolean)
+                                                        .join(" · ")}
+                                                </p>
+                                            )}
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            <StatusBadge status={finding.severity} />
+                                        </td>
+                                        <td className="max-w-xs px-5 py-4 font-mono text-xs text-gray-500">
+                                            {[finding.method, finding.endpoint].filter(Boolean).join(" ") ||
+                                                "—"}
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            <StatusBadge status={finding.status} />
+                                        </td>
+                                        <td className="whitespace-nowrap px-5 py-4 text-xs text-gray-500">
+                                            {formatDate(finding.lastSeenAt, true)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+                <div className="flex items-center gap-2 border-t border-gray-100 bg-gray-50 px-6 py-3 text-xs text-gray-500">
+                    <Database className="h-4 w-4" />
+                    Raw evidence is stored privately and is available only through the authorized security
+                    workflow.
+                </div>
+            </Panel>
 
             <div className="grid gap-6 lg:grid-cols-5">
                 <Panel className="lg:col-span-3">

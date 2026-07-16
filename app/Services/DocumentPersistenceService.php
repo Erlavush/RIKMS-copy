@@ -144,7 +144,15 @@ class DocumentPersistenceService
                         'original_filename' => $file->getClientOriginalName(),
                         'mime_type' => $file->getMimeType(),
                         'file_size' => $file->getSize(),
+                        'hash' => null,
+                        'integrity_status' => 'pending',
+                        'malware_status' => 'pending',
+                        'processing_status' => 'pending',
+                        'extraction_method' => null,
+                        'extracted_text' => null,
+                        'processing_error' => null,
                     ];
+                    $document->chunks()->delete();
                 }
 
                 // Editing an approved record always creates a new review-gated draft.

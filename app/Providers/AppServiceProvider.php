@@ -2,15 +2,14 @@
 
 namespace App\Providers;
 
+use App\Events\DocumentSourceStored;
+use App\Jobs\ProcessDocumentJob;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Storage;
-use League\Flysystem\Filesystem;
-use Masbug\Flysystem\GoogleDriveAdapter;
-use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Laravel\Fortify\Fortify;
 
@@ -31,22 +30,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Storage::extend('google', function ($app, $config) {
-            $client = new \Google\Client();
-            $client->setClientId($config['clientId'] ?? '');
-            $client->setClientSecret($config['clientSecret'] ?? '');
-            $client->refreshToken($config['refreshToken'] ?? '');
+        Event::listen(DocumentSourceStored::class, function (DocumentSourceStored $event): void {
+            if (! config('rikms.document_processing.auto_queue')) {
+                return;
+            }
 
-            $service = new \Google\Service\Drive($client);
-            $adapter = new GoogleDriveAdapter($service, $config['folderId'] ?? '/');
-
-            $driver = new Filesystem($adapter, $config);
-
-            return new FilesystemAdapter(
-                $driver,
-                $adapter,
-                $config
-            );
+            ProcessDocumentJob::dispatch($event->documentId)->onQueue('default');
         });
 
         PasswordRule::defaults(fn () => PasswordRule::min(14)->mixedCase()->letters()->numbers()->symbols());

@@ -89,7 +89,15 @@ class DocumentVersionService
             $attributes['original_filename'] = $version->original_filename;
             $attributes['mime_type'] = $version->mime_type;
             $attributes['file_size'] = $version->file_size;
+            $attributes['hash'] = null;
+            $attributes['integrity_status'] = 'pending';
+            $attributes['malware_status'] = 'pending';
+            $attributes['processing_status'] = 'pending';
+            $attributes['extraction_method'] = null;
+            $attributes['extracted_text'] = null;
+            $attributes['processing_error'] = null;
             $document->update($attributes);
+            $document->chunks()->delete();
 
             if ($metadata = ($snapshot['metadata'] ?? null)) {
                 $document->metadata()->updateOrCreate([], collect($metadata)->except(['id', 'document_id', 'created_at', 'updated_at'])->all());

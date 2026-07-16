@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\AnalyzeRikmsDocument;
+use App\Jobs\ProcessDocumentJob;
 use App\Models\Document;
 use App\Models\DocumentAiAnalysis;
 use App\Models\User;
@@ -18,12 +19,13 @@ class AiAndTestCohortTest extends TestCase
 
     protected $seed = true;
 
-    public function test_ai_enabled_upload_stays_draft_and_queues_review_gated_analysis(): void
+    public function test_ai_enabled_upload_stays_draft_and_stages_analysis_behind_source_safety(): void
     {
         Storage::fake('documents');
         Queue::fake();
         config()->set('rikms.ai.enabled', true);
         config()->set('rikms.ai.auto_queue', true);
+        config()->set('rikms.document_processing.auto_queue', true);
         config()->set('rikms.ai.project_id', 'rikms-test-project');
 
         $user = User::query()->where('email', 'test@example.com')->firstOrFail();
@@ -44,7 +46,8 @@ class AiAndTestCohortTest extends TestCase
             ->assertJsonPath('analysisQueued', true);
         $analysis = DocumentAiAnalysis::query()->firstOrFail();
         $this->assertSame('queued', $analysis->status);
-        Queue::assertPushedOn('ai', AnalyzeRikmsDocument::class);
+        Queue::assertPushedOn('default', ProcessDocumentJob::class);
+        Queue::assertNotPushed(AnalyzeRikmsDocument::class);
     }
 
     public function test_completed_suggestions_require_explicit_human_acceptance(): void

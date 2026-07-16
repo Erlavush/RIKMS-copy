@@ -11,6 +11,10 @@ return [
     'max_document_upload_kb' => (int) env('RIKMS_MAX_DOCUMENT_UPLOAD_KB', 25 * 1024),
     'max_highlight_upload_kb' => (int) env('RIKMS_MAX_HIGHLIGHT_UPLOAD_KB', 10 * 1024),
 
+    'document_processing' => [
+        'auto_queue' => (bool) env('RIKMS_DOCUMENT_PROCESSING_AUTO_QUEUE', true),
+    ],
+
     'ai' => [
         'enabled' => (bool) env('RIKMS_AI_ENABLED', false),
         'auto_queue' => (bool) env('RIKMS_AI_AUTO_QUEUE', true),

@@ -34,6 +34,11 @@ jobs:
           node-version: '22'
           cache: npm
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
@@ -54,6 +59,11 @@ jobs:
       - name: Run backend tests
         run: php artisan test
 
+      - name: Verify security tooling contracts
+        run: |
+          python -m unittest discover -s security/tests -v
+          bash -n deploy-to-gcp.sh deploy-staging-to-gcp.sh configure-github-security-oidc.sh
+
       - name: Run frontend quality suite
         run: npm run check
 
@@ -62,3 +72,58 @@ jobs:
 
       - name: Audit frontend dependencies
         run: npm audit
+
+  windows-compatibility:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          extensions: fileinfo, mbstring, openssl, pdo_sqlite, sqlite3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Validate PowerShell scripts
+        shell: pwsh
+        run: |
+          Get-ChildItem scripts/windows/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref] $tokens,
+              [ref] $errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              throw ($errors | Out-String)
+            }
+          }
+
+      - name: Run supported Windows setup
+        shell: pwsh
+        run: .\scripts\windows\setup-local.ps1 -SkipFrontendBuild
+
+      - name: Run Windows backend and scanner checks
+        shell: pwsh
+        run: |
+          php artisan test tests/Feature/DemoProvisioningTest.php tests/Feature/DocumentProcessingTest.php tests/Feature/SecurityAssessmentTest.php
+          python -m unittest discover -s security/tests -v
+
+      - name: Run Windows frontend type check
+        run: npm run typecheck

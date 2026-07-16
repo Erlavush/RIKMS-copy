@@ -2,10 +2,10 @@
 *.sqlite
 *.sqlite-*
 .DS_Store
-/AGENTS.md
 .env
 .env.backup
 .env.production
+gha-creds-*.json
 .phpactor.json
 .phpunit.result.cache
 /.fleet
@@ -29,3 +29,13 @@ Homestead.yaml
 Thumbs.db
 .zap_temp/
 __pycache__/
+/storage/app/security/
+/security/reports/
+/composer-audit-report.json
+/larastan-report.json
+/native-report.json
+/npm-audit-report.json
+/report.xml
+/route-map.json
+/zap-help.txt
+/zap-report.json

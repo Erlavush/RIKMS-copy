@@ -16,7 +16,8 @@ return new class extends Migration
             $table->string('malware_status')->default('pending')->after('hash');
             $table->string('integrity_status')->default('pending')->after('malware_status');
             $table->string('processing_status')->default('pending')->after('integrity_status');
-            $table->longText('extracted_text')->nullable()->after('processing_status');
+            $table->string('extraction_method', 64)->nullable()->after('processing_status');
+            $table->longText('extracted_text')->nullable()->after('extraction_method');
             $table->text('processing_error')->nullable()->after('extracted_text');
         });
     }
@@ -32,6 +33,7 @@ return new class extends Migration
                 'malware_status',
                 'integrity_status',
                 'processing_status',
+                'extraction_method',
                 'extracted_text',
                 'processing_error',
             ]);

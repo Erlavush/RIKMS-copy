@@ -12,8 +12,6 @@ use App\Services\PlatformSettingsService;
 use App\Services\RikmsPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use App\Models\AccessRequest;
-use App\Models\AuditLog;
 use Illuminate\Support\Facades\DB;
 
 class PublicApiController extends RikmsApiController
@@ -40,55 +38,7 @@ class PublicApiController extends RikmsApiController
             ->orderBy('number')->get();
         $user = $request->user()?->is_active ? $request->user()->load('agency') : null;
 
-        // 1. Documents visibility filtering
-        $documentsQuery = Document::query()
-            ->with(['metadata', 'sdgTags', 'agency', 'uploader']);
-
-        if (!$user) {
-            $documentsQuery->where('status', 'published');
-        } elseif ($user->role !== 'super_admin') {
-            $documentsQuery->where(function ($query) use ($user) {
-                $query->where('status', 'published')
-                      ->orWhere('agency_id', $user->agency_id);
-            });
-        }
-        $documents = $documentsQuery->latest('updated_at')->get();
-
-        // 2. Access Requests filtering
-        $accessRequestsQuery = AccessRequest::query()
-            ->with(['document.metadata', 'requester'])
-            ->latest()
-            ->take(50);
-
-        if (!$user) {
-            $accessRequests = collect();
-        } elseif ($user->role !== 'super_admin') {
-            $accessRequests = $accessRequestsQuery->whereHas('document', function ($query) use ($user) {
-                $query->where('agency_id', $user->agency_id);
-            })->get();
-        } else {
-            $accessRequests = $accessRequestsQuery->get();
-        }
-
-        // 3. Audit Logs filtering
-        $auditLogsQuery = AuditLog::query()
-            ->with(['document.metadata', 'user'])
-            ->latest()
-            ->take(75);
-
-        if (!$user) {
-            $auditLogs = collect();
-        } elseif ($user->role !== 'super_admin') {
-            $auditLogs = $auditLogsQuery->where(function ($query) use ($user) {
-                $query->whereHas('document', function ($docQuery) use ($user) {
-                    $docQuery->where('agency_id', $user->agency_id);
-                })->orWhere('user_id', $user->id);
-            })->get();
-        } else {
-            $auditLogs = $auditLogsQuery->get();
-        }
-
-        $data = [
+        return response()->json([
             'currentUser' => $user ? [
                 'id' => $user->id, 'name' => $user->name, 'email' => $user->email,
                 'role' => $user->role, 'agencyId' => $user->agency_id,
@@ -118,47 +68,7 @@ class PublicApiController extends RikmsApiController
                 'siteName' => $settings['site_name'], 'supportEmail' => $settings['support_email'],
                 'announcement' => $settings['announcement'], 'allowPublicBrowse' => $browse,
             ],
-            'researchData' => $documents->map(fn (Document $document) => [
-                'id' => $document->id,
-                'title' => $document->title,
-                'description' => $document->description,
-                'year' => $document->year,
-                'quarter' => $document->quarter,
-                'docType' => $document->document_type,
-                'status' => $document->status,
-                'accessMode' => $document->access_mode,
-                'agency' => $document->agency?->name,
-                'agencyAbbr' => $document->agency?->abbreviation(),
-                'sdgs' => $document->sdgTags->pluck('number')->toArray(),
-                'authors' => is_array($document->metadata?->authors) ? $document->metadata->authors : ($document->metadata?->authors ? array_map('trim', explode(',', $document->metadata->authors)) : []),
-                'downloads' => $document->downloads ?? 0,
-                'malware_status' => $document->malware_status,
-                'extracted_text' => $document->extracted_text,
-            ])->values(),
-        ];
-
-        if ($user) {
-            $data['accessRequests'] = $accessRequests->map(fn (AccessRequest $request) => [
-                'id' => $request->id,
-                'documentId' => $request->document_id,
-                'documentTitle' => $request->document?->title,
-                'requesterName' => $request->requester?->name,
-                'requesterEmail' => $request->requester?->email,
-                'status' => $request->status,
-                'createdAt' => $request->created_at?->toDateTimeString(),
-            ])->values();
-
-            $data['auditLogs'] = $auditLogs->map(fn (AuditLog $log) => [
-                'id' => $log->id,
-                'action' => $log->action,
-                'details' => $log->details,
-                'userName' => $log->user?->name,
-                'documentTitle' => $log->document?->title,
-                'createdAt' => $log->created_at?->toDateTimeString(),
-            ])->values();
-        }
-
-        return response()->json($data);
+        ]);
     }
 
     public function index(Request $request)

@@ -210,6 +210,9 @@ class BackendSecurityWorkflowTest extends TestCase
         $document->refresh();
         $this->assertSame('draft', $document->status);
         $this->assertNull($document->published_at);
+        $this->assertSame('pending', $document->integrity_status);
+        $this->assertSame('pending', $document->malware_status);
+        $this->assertSame('pending', $document->processing_status);
         $this->assertNull($document->reviewed_at);
         $this->assertNull($document->reviewed_by);
         $this->assertNull($document->rejection_reason);
