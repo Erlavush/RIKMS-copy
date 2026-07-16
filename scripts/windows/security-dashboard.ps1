@@ -22,6 +22,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $appProcess = $null
+$queueProcess = $null
+$viteProcess = $null
 $ollamaProcess = $null
 
 function Test-TcpPort {
@@ -46,6 +48,16 @@ function Wait-ForLocalApp {
     throw "RIKMS did not become reachable on 127.0.0.1:$PortNumber within 30 seconds."
 }
 
+function Stop-ManagedProcess {
+    param($Process)
+    if ($null -eq $Process -or $Process.HasExited) { return }
+    if (Get-Command "taskkill.exe" -ErrorAction SilentlyContinue) {
+        & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
+        return
+    }
+    Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+}
+
 Push-Location $repoRoot
 try {
     if ($View -and ($Code -or $Passive -or $AI -or $Zap)) {
@@ -58,9 +70,22 @@ try {
         $env:SECURITY_ACTIVE_SCAN_ENABLED = "true"
     }
 
-    if ($StartApp -and -not (Test-TcpPort -HostName "127.0.0.1" -PortNumber 8000)) {
+    if ($StartApp) {
+        if (Test-TcpPort -HostName "127.0.0.1" -PortNumber 8000) {
+            throw "Port 8000 is already in use. Stop the other Laravel server so RIKMS, Vite, the queue worker, and this dashboard all run from $repoRoot."
+        }
+        if (Test-TcpPort -HostName "127.0.0.1" -PortNumber 5173) {
+            throw "Port 5173 is already in use. Stop the other Vite server before starting this checkout."
+        }
         if (-not (Get-Command "php" -ErrorAction SilentlyContinue)) {
             throw "PHP was not found. Run scripts\windows\setup-local.ps1 first."
+        }
+        $npmCommand = Get-Command "npm.cmd" -ErrorAction SilentlyContinue
+        if (-not $npmCommand) {
+            $npmCommand = Get-Command "npm" -ErrorAction SilentlyContinue
+        }
+        if (-not $npmCommand) {
+            throw "npm was not found. Run scripts\windows\setup-local.ps1 first."
         }
         $appArguments = @(
             "-d", "upload_max_filesize=25M",
@@ -71,7 +96,18 @@ try {
         )
         $appProcess = Start-Process -FilePath "php" -ArgumentList $appArguments -WorkingDirectory $repoRoot -PassThru
         Wait-ForLocalApp -PortNumber 8000
+        $queueProcess = Start-Process -FilePath "php" -ArgumentList @(
+            "artisan", "queue:work",
+            "--queue=default,ai",
+            "--tries=3",
+            "--timeout=180"
+        ) -WorkingDirectory $repoRoot -PassThru
+        $viteProcess = Start-Process -FilePath $npmCommand.Source -ArgumentList @(
+            "run", "dev", "--", "--host=127.0.0.1"
+        ) -WorkingDirectory $repoRoot -PassThru
         Write-Host "RIKMS started at http://127.0.0.1:8000" -ForegroundColor Green
+        Write-Host "Queue worker started for default,ai." -ForegroundColor Green
+        Write-Host "Vite HMR started on port 5173. Do not browse port 5173; open RIKMS on port 8000." -ForegroundColor DarkGray
     }
 
     if ($StartOllama -and -not (Test-TcpPort -HostName "127.0.0.1" -PortNumber 11434)) {
@@ -119,11 +155,9 @@ try {
     exit $LASTEXITCODE
 }
 finally {
-    if ($null -ne $appProcess -and -not $appProcess.HasExited) {
-        Stop-Process -Id $appProcess.Id -ErrorAction SilentlyContinue
-    }
-    if ($null -ne $ollamaProcess -and -not $ollamaProcess.HasExited) {
-        Stop-Process -Id $ollamaProcess.Id -ErrorAction SilentlyContinue
-    }
+    Stop-ManagedProcess -Process $viteProcess
+    Stop-ManagedProcess -Process $queueProcess
+    Stop-ManagedProcess -Process $appProcess
+    Stop-ManagedProcess -Process $ollamaProcess
     Pop-Location
 }

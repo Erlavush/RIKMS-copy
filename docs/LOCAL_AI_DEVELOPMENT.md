@@ -77,6 +77,10 @@ php artisan serve --host=127.0.0.1 --port=8000
 php artisan queue:work --queue=default,ai --tries=3
 ```
 
+When using Jaylord's launcher with `-StartApp`, Laravel, this queue worker, and
+Vite are started together from the current repository. Do not separately run
+Vite or Laravel from a different clone.
+
 Jaylord can start the local services and open the security workbench with:
 
 ```powershell
@@ -111,6 +115,19 @@ php artisan test --filter=OllamaDocumentAnalysisTest
 python3 -m unittest discover -s security/tests -v
 python3 -m security.lab --run ai
 ```
+
+For interactive RIKMS document testing, start Ollama in one terminal and the
+complete Laravel development stack in another:
+
+```bash
+ollama serve
+composer run dev
+```
+
+Open RIKMS on `http://127.0.0.1:8000`. Port 5173 is only Vite. A queued
+analysis requires the `default,ai` worker included in `composer run dev`; if
+that worker is absent, the edit page now reports the missing local runtime
+instead of displaying an indefinite generic processing message.
 
 ## Security boundaries
 

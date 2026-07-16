@@ -119,6 +119,11 @@ export function ResearchMetadata() {
     const [aiBusy, setAiBusy] = useState(false);
     const [appliedAnalysisId, setAppliedAnalysisId] = useState<number | null>(null);
     const [acceptedAiFields, setAcceptedAiFields] = useState<string[]>([]);
+    const currentAnalysis = aiAnalysis.data?.data;
+    const queuedForLongerThanFifteenSeconds =
+        currentAnalysis?.status === "queued" &&
+        Boolean(currentAnalysis.createdAt) &&
+        Date.now() - Date.parse(currentAnalysis.createdAt) >= 15_000;
 
     useEffect(() => {
         const document = detail.data?.data;
@@ -579,9 +584,21 @@ export function ResearchMetadata() {
                                 </span>
                             )}
                         </div>
-                        {(aiAnalysis.data.data.status === "queued" ||
-                            aiAnalysis.data.data.status === "processing") && (
-                            <p className="mt-2 text-purple-800">Processing safely in the background…</p>
+                        {aiAnalysis.data.data.status === "queued" && !queuedForLongerThanFifteenSeconds && (
+                            <p className="mt-2 text-purple-800">Waiting for the background queue worker…</p>
+                        )}
+                        {aiAnalysis.data.data.status === "queued" && queuedForLongerThanFifteenSeconds && (
+                            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                                Still queued. Local development requires the queue worker and configured model
+                                service. Start the complete stack with <code>composer run dev</code> or{" "}
+                                <code>npm run dev:rikms</code>, then confirm Ollama is running. Port 5173 is
+                                only Vite; open RIKMS on port 8000.
+                            </p>
+                        )}
+                        {aiAnalysis.data.data.status === "processing" && (
+                            <p className="mt-2 text-purple-800">
+                                The background worker is processing the PDF…
+                            </p>
                         )}
                         {aiAnalysis.data.data.status === "failed" && (
                             <p className="mt-2 text-red-700">{aiAnalysis.data.data.errorMessage}</p>

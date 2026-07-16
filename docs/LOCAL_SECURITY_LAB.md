@@ -54,6 +54,11 @@ Start RIKMS when needed and open the dashboard without running scans:
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\security-dashboard.ps1 -StartApp
 ```
 
+`-StartApp` starts Laravel on port 8000, the `default,ai` queue worker, and
+Vite from this same checkout before opening the dashboard. It refuses to start
+when ports 8000 or 5173 are already occupied, which prevents accidentally
+testing Laravel from one clone with Vite or the queue worker from another.
+
 Start RIKMS and immediately refresh code, passive web/API and local Ollama
 evidence:
 
@@ -69,6 +74,19 @@ model is unavailable, the result is `unavailable`—never passed. See
 `docs/LOCAL_AI_DEVELOPMENT.md` for the application provider and OCR workflow.
 
 ## Linux quick start
+
+Start the complete RIKMS development runtime from the same checkout in the
+first terminal:
+
+```bash
+composer run dev
+# Equivalent: npm run dev:rikms
+```
+
+Open RIKMS at `http://127.0.0.1:8000`. Plain `npm run dev` starts only Vite;
+the page on port 5173 is not RIKMS and is not Jaylord's dashboard.
+
+Start Jaylord's standalone workbench in a second terminal:
 
 ```bash
 export SECURITY_ALLOWED_TARGETS=http://127.0.0.1:8000

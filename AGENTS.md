@@ -51,6 +51,7 @@ Build and operate RIKMS as a privacy-preserving research repository. Correct aut
 - No scan starts merely because the dashboard opens. Code, passive web/API, local AI, ZAP and active modes require explicit selection.
 - All scanner processes use argument arrays, `shell=False`, finite timeouts, bounded output, checked exit statuses and fresh private report paths.
 - Windows PowerShell is the primary teammate workflow. Keep `scripts/windows/security-dashboard.ps1` and `docs/LOCAL_SECURITY_LAB.md` synchronized with CLI changes.
+- Never mix checkouts between Laravel, Vite, the queue worker, or the security lab. `composer run dev` (or `npm run dev:rikms`) must start Laravel on 8000, the `default,ai` queue worker, logs, and Vite from one repository root; port 5173 is not the application URL.
 - Keep local run artifacts below ignored `storage/app/security/lab`. Never commit generated reports, captured responses, session material or real research documents.
 - Treat unavailable tools, blocked policy and malformed output as distinct non-passing states. Never convert missing evidence into an optimistic score.
 

@@ -24,6 +24,11 @@ php artisan schedule:work
 npm run dev
 ```
 
+These commands must all be run from the same clone. `npm run dev` starts only
+Vite; never browse port 5173 as the application. RIKMS is always opened at
+`http://127.0.0.1:8000`. For a single managed command that also opens Jaylord's
+dashboard, use the `security-dashboard.ps1 -StartApp` workflow below.
+
 Open `http://127.0.0.1:8000/login`. Local demo credentials are `test@example.com` / `password` and `admin@rikms.gov.ph` / `password`. They are deliberately local-only; never use them on staging or production.
 
 ## Authorized local security assessment
@@ -34,6 +39,11 @@ does not require a RIKMS login to view:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\security-dashboard.ps1 -StartApp
 ```
+
+`-StartApp` starts Laravel, the `default,ai` queue worker, and Vite from this
+repository, then opens the dashboard. When the dashboard exits, only the
+processes it started are stopped. The script refuses occupied ports 8000 or
+5173 so it cannot silently combine different clones.
 
 To open it and explicitly refresh code, passive application and local Ollama
 evidence:

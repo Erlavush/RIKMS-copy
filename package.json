@@ -6,6 +6,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
+        "dev:rikms": "composer run dev",
         "typecheck": "tsc --noEmit",
         "lint": "eslint resources/js vite.config.js vitest.config.ts",
         "format": "prettier --write resources/js vite.config.js vitest.config.ts eslint.config.js",
