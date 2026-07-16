@@ -25,7 +25,7 @@ class SecurityHeaders
             $response->headers->set('Pragma', 'no-cache');
         }
 
-        if (app()->environment('production')) {
+        if (app()->environment('production', 'staging')) {
             $response->headers->set(
                 'Content-Security-Policy',
                 "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; manifest-src 'self'; media-src 'self'; worker-src 'self' blob:; upgrade-insecure-requests"

@@ -442,10 +442,12 @@ class ReleaseReadinessTest extends TestCase
             ->assertHeader('Cache-Control', 'max-age=0, no-store, private')
             ->assertHeader('Pragma', 'no-cache');
 
-        $this->app['env'] = 'production';
-        $this->get('https://localhost/')
-            ->assertHeader('Content-Security-Policy')
-            ->assertHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        foreach (['production', 'staging'] as $environment) {
+            $this->app['env'] = $environment;
+            $this->get('https://localhost/')
+                ->assertHeader('Content-Security-Policy')
+                ->assertHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        }
     }
 
     public function test_proxy_ip_cors_and_secure_session_boundaries_are_enforced(): void
