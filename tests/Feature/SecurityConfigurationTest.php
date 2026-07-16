@@ -99,11 +99,22 @@ class SecurityConfigurationTest extends TestCase
     public function test_windows_teammate_workflow_is_versioned_and_ci_verified(): void
     {
         $workflow = file_get_contents(base_path('.github/workflows/ci.yml'));
+        $dashboard = file_get_contents(base_path('scripts/windows/security-dashboard.ps1'));
+        $composer = file_get_contents(base_path('composer.json'));
         $this->assertIsString($workflow);
+        $this->assertIsString($dashboard);
+        $this->assertIsString($composer);
         $this->assertStringContainsString('windows-compatibility:', $workflow);
         $this->assertStringContainsString('runs-on: windows-latest', $workflow);
         $this->assertFileExists(base_path('scripts/windows/setup-local.ps1'));
         $this->assertFileExists(base_path('scripts/windows/security-scan.ps1'));
+        $this->assertFileExists(base_path('scripts/windows/security-dashboard.ps1'));
         $this->assertFileExists(base_path('docs/WINDOWS_DEVELOPMENT.md'));
+        $this->assertFileExists(base_path('docs/LOCAL_SECURITY_LAB.md'));
+        $this->assertStringContainsString('queue:work', $dashboard);
+        $this->assertStringContainsString('--queue=default,ai', $dashboard);
+        $this->assertStringContainsString('npm', $dashboard);
+        $this->assertStringContainsString('Port 8000 is already in use', $dashboard);
+        $this->assertStringContainsString('--queue=default,ai', $composer);
     }
 }

@@ -1,0 +1,2572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RIKMS Executive Security & Audit Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script id="chart-js-lib" src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    <style>
+        :root {
+            --bg-primary: #090a0f;
+            --bg-secondary: #111218;
+            --bg-glass: rgba(255, 255, 255, 0.03);
+            --border-glass: rgba(255, 255, 255, 0.06);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+
+            --color-passed: #10b981;
+            --color-failed: #ef4444;
+            --color-skipped: #f59e0b;
+
+            --color-high: #f43f5e;
+            --color-medium: #fb923c;
+            --color-low: #f59e0b;
+            --color-info: #3b82f6;
+
+            --font-main: 'Outfit', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+            background-image:
+                radial-gradient(circle at 5% 5%, rgba(99, 102, 241, 0.07) 0%, transparent 40%),
+                radial-gradient(circle at 95% 95%, rgba(16, 185, 129, 0.04) 0%, transparent 45%);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-glass);
+            padding-bottom: 1.5rem;
+        }
+
+        .header-title h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.02em;
+        }
+
+        .header-title p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-top: 0.25rem;
+        }
+
+        .refresh-btn {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-family: var(--font-main);
+            transition: all 0.2s ease;
+        }
+
+        .refresh-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Mode Toggle */
+        .mode-toggle {
+            display: flex;
+            align-items: center;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            padding: 0.25rem;
+            margin-bottom: 1.5rem;
+            width: fit-content;
+        }
+
+        .mode-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.4rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.85rem;
+            font-family: var(--font-main);
+            transition: all 0.2s ease;
+        }
+
+        .mode-btn.active {
+            background: #4f46e5;
+            color: #fff;
+        }
+
+        /* Executive Overview Panel */
+        .executive-panel {
+            background: linear-gradient(135deg, rgba(30, 27, 75, 0.4) 0%, rgba(15, 23, 42, 0.4) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        @media (max-width: 900px) {
+            .executive-panel {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .score-circle-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .score-circle {
+            position: relative;
+            width: 160px;
+            height: 160px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .score-circle svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        .score-circle circle {
+            fill: none;
+            stroke-width: 12;
+        }
+
+        .score-circle .bg-ring {
+            stroke: rgba(255, 255, 255, 0.05);
+        }
+
+        .score-circle .val-ring {
+            stroke: var(--color-passed);
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.6s ease;
+        }
+
+        .score-text {
+            position: absolute;
+            font-size: 2.25rem;
+            font-weight: 800;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .score-text span {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            margin-top: -2px;
+        }
+
+        .executive-summary-content h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            color: #a5b4fc;
+        }
+
+        .executive-summary-content p {
+            font-size: 1.05rem;
+            color: #d1d5db;
+            line-height: 1.6;
+            margin-bottom: 1.25rem;
+        }
+
+        .health-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.4rem 1rem;
+            border-radius: 99px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            letter-spacing: 0.02em;
+        }
+        .health-badge.excellent { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .health-badge.good { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .health-badge.poor { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+        /* Navigation Tabs */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.25rem;
+            border-radius: 10px;
+            border: 1px solid var(--border-glass);
+            margin-bottom: 2rem;
+            width: fit-content;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-family: var(--font-main);
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn.active {
+            background: var(--bg-glass);
+            color: var(--text-primary);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Metrics grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .metric-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--text-secondary);
+        }
+
+        .metric-card.passed::before { background: var(--color-passed); }
+        .metric-card.failed::before { background: var(--color-failed); }
+        .metric-card.high-alert::before { background: var(--color-high); }
+        .metric-card.warn-alert::before { background: var(--color-medium); }
+
+        .metric-label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-value {
+            font-size: 2.25rem;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .metric-subtext {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.4rem;
+        }
+
+        /* Visualizations Grid */
+        .viz-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 968px) {
+            .viz-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .viz-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 1.5rem;
+        }
+
+        .viz-card h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1.25rem;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 260px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Panel Container */
+        .panel {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .panel-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .search-input {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-family: var(--font-main);
+            font-size: 0.9rem;
+            min-width: 240px;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #6366f1;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            padding: 1rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-glass);
+        }
+
+        td {
+            padding: 1rem;
+            font-size: 0.95rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+            vertical-align: top;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.01);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge.passed { background: rgba(16, 185, 129, 0.1); color: var(--color-passed); border: 1px solid rgba(16, 185, 129, 0.2); }
+        .badge.failed { background: rgba(239, 68, 68, 0.1); color: var(--color-failed); border: 1px solid rgba(239, 68, 68, 0.2); }
+        .badge.skipped { background: rgba(245, 158, 11, 0.1); color: var(--color-skipped); border: 1px solid rgba(245, 158, 11, 0.2); }
+
+        .badge.high { background: rgba(244, 63, 94, 0.1); color: var(--color-high); border: 1px solid rgba(244, 63, 94, 0.2); }
+        .badge.medium { background: rgba(251, 146, 60, 0.1); color: var(--color-medium); border: 1px solid rgba(251, 146, 60, 0.2); }
+        .badge.low { background: rgba(245, 158, 11, 0.1); color: var(--color-low); border: 1px solid rgba(245, 158, 11, 0.2); }
+        .badge.informational { background: rgba(59, 130, 246, 0.1); color: var(--color-info); border: 1px solid rgba(59, 130, 246, 0.2); }
+
+        .code-path {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: #818cf8;
+        }
+
+        .line-num {
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+        }
+
+        /* Business explanation styles */
+        .business-explanation {
+            background: rgba(99, 102, 241, 0.05);
+            border-left: 2px solid #818cf8;
+            padding: 0.75rem 1rem;
+            margin-top: 0.5rem;
+            border-radius: 0 8px 8px 0;
+            font-size: 0.92rem;
+            color: #e0e7ff;
+            line-height: 1.4;
+        }
+
+        .business-explanation strong {
+            color: #a5b4fc;
+        }
+
+        .technical-details {
+            margin-top: 0.75rem;
+            border-top: 1px dashed rgba(255, 255, 255, 0.04);
+            padding-top: 0.75rem;
+        }
+
+        .technical-toggle-btn {
+            background: transparent;
+            border: none;
+            color: #818cf8;
+            font-size: 0.8rem;
+            cursor: pointer;
+            text-decoration: underline;
+            padding: 0;
+            margin-bottom: 0.5rem;
+            display: inline-block;
+        }
+
+        .technical-box {
+            display: none;
+        }
+
+        /* When technical mode is active, override hidden state */
+        body.technical-mode .technical-box {
+            display: block;
+        }
+        body.technical-mode .technical-toggle-btn {
+            display: none;
+        }
+
+        .error-log {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            background: rgba(239, 68, 68, 0.03);
+            border: 1px solid rgba(239, 68, 68, 0.1);
+            color: #fca5a5;
+            padding: 0.75rem;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .solution-box {
+            background: rgba(16, 185, 129, 0.03);
+            border-left: 2px solid var(--color-passed);
+            padding: 0.5rem 0.75rem;
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+            color: #a7f3d0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .no-data-msg {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+        }
+
+        .no-data-msg code {
+            display: block;
+            margin-top: 1rem;
+            background: rgba(0,0,0,0.3);
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-family: var(--font-mono);
+            color: #a5b4fc;
+        }
+
+        /* Guide formatting */
+        .zap-guide-panel ol li {
+            margin-bottom: 0.5rem;
+        }
+        .zap-guide-panel ul li {
+            margin-bottom: 0.25rem;
+            color: var(--text-secondary);
+        }
+
+        /* ================= SCAN MONITOR & MC SPIDER ================= */
+        .scan-monitor-panel {
+            display: grid;
+            grid-template-columns: 1fr 1.6fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            align-items: stretch;
+        }
+
+        .scan-status-side-board {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            justify-content: center;
+        }
+
+        .side-board-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #818cf8;
+            margin-bottom: 0.25rem;
+            border-bottom: 1px solid rgba(129, 140, 248, 0.15);
+            padding-bottom: 0.5rem;
+        }
+
+        .scan-status-side-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .scan-status-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.9rem;
+        }
+
+        .scan-status-item span.scan-name {
+            font-weight: 500;
+            color: #d1d5db;
+        }
+
+        .scan-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .scan-badge.pending {
+            background: rgba(107, 114, 128, 0.1);
+            color: #9ca3af;
+            border: 1px solid rgba(107, 114, 128, 0.2);
+        }
+
+        .scan-badge.running {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            animation: pulse-blue 1s infinite alternate;
+        }
+
+        .scan-badge.completed {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .scan-badge.failed {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .scan-badge.skipped {
+            background: rgba(245, 158, 11, 0.1);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+
+        @keyframes pulse-blue {
+            0% { opacity: 0.7; }
+            100% { opacity: 1; filter: drop-shadow(0 0 4px #3b82f6); }
+        }
+
+        /* 3D Minecraft Spider Viewport & Web Background */
+        .spider-center-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+        }
+
+        .scan-global-header {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #a5b4fc;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background: rgba(99, 102, 241, 0.08);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            padding: 0.4rem 1.2rem;
+            border-radius: 30px;
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.05);
+        }
+
+        .spider-viewport {
+            width: 100%;
+            height: 300px;
+            background: #07080c;
+            /* Concentric rings and radial lines of the web */
+            background-image:
+                repeating-radial-gradient(circle at 50% 50%, transparent, transparent 20px, rgba(99, 102, 241, 0.15) 21px, rgba(99, 102, 241, 0.15) 22px),
+                linear-gradient(0deg, transparent 49.5%, rgba(99, 102, 241, 0.12) 50%, transparent 50.5%),
+                linear-gradient(90deg, transparent 49.5%, rgba(99, 102, 241, 0.12) 50%, transparent 50.5%),
+                linear-gradient(45deg, transparent 49.5%, rgba(99, 102, 241, 0.12) 50%, transparent 50.5%),
+                linear-gradient(-45deg, transparent 49.5%, rgba(99, 102, 241, 0.12) 50%, transparent 50.5%);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            perspective: 800px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(99, 102, 241, 0.1) inset;
+        }
+
+        /* Radar sweep overlay (conic sweeping lines) */
+        .spider-viewport::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 250%;
+            height: 250%;
+            background: conic-gradient(from 0deg at 50% 50%, rgba(16, 185, 129, 0.08) 0deg, transparent 60deg);
+            transform: translate(-50%, -50%) rotate(0deg);
+            pointer-events: none;
+            z-index: 1;
+            animation: radar-sweep-green 10s linear infinite;
+        }
+
+        .spider-viewport.scanning::after {
+            background: conic-gradient(from 0deg at 50% 50%, rgba(239, 68, 68, 0.18) 0deg, transparent 90deg);
+            animation: radar-sweep-red 3s linear infinite;
+        }
+
+        /* Radar pulsing center circle */
+        .spider-viewport::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 2;
+            transform: translate(-50%, -50%) scale(0.5);
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.4);
+            animation: radar-pulse-green 4s infinite linear;
+        }
+
+        .spider-viewport.scanning::before {
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.5);
+            animation: radar-pulse-red 2s infinite linear;
+        }
+
+        @keyframes radar-sweep-green {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        @keyframes radar-sweep-red {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        @keyframes radar-pulse-green {
+            0% { transform: translate(-50%, -50%) scale(0.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(3.5); opacity: 0; }
+        }
+
+        @keyframes radar-pulse-red {
+            0% { transform: translate(-50%, -50%) scale(0.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(3.5); opacity: 0; }
+        }
+
+        .spider-label {
+            position: absolute;
+            bottom: 15px;
+            font-size: 0.75rem;
+            color: #818cf8;
+            font-family: var(--font-mono);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            background: rgba(7, 8, 12, 0.75);
+            padding: 0.25rem 0.75rem;
+            border-radius: 10px;
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            z-index: 4;
+        }
+
+        /* MC Spider 3D Box Styling */
+        .mc-spider {
+            position: relative;
+            width: 0;
+            height: 0;
+            z-index: 3;
+            transform-style: preserve-3d;
+            transform: translate3d(0, 5px, 0) rotateX(-20deg) rotateY(-35deg) scale3d(1.7, 1.7, 1.7);
+            /* Body idle bobbing */
+            animation: mc-spider-bob 2.5s ease-in-out infinite alternate;
+        }
+
+        @keyframes mc-spider-bob {
+            0% { transform: translate3d(0, 15px, 0) rotateX(-22deg) rotateY(-38deg) scale3d(1.7, 1.7, 1.7); }
+            100% { transform: translate3d(0, -5px, 0) rotateX(-18deg) rotateY(-32deg) scale3d(1.7, 1.7, 1.7); }
+        }
+
+        /* Scan Context Card CSS */
+        .scan-context-card {
+            background: rgba(129, 140, 248, 0.04);
+            border: 1px solid rgba(129, 140, 248, 0.15);
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: #d1d5db;
+        }
+        .scan-context-card strong {
+            color: #818cf8;
+        }
+
+        .cube {
+            position: absolute;
+            transform-style: preserve-3d;
+        }
+
+        .face {
+            position: absolute;
+            box-sizing: border-box;
+            border: 1px solid rgba(0, 0, 0, 0.95);
+            /* Minecraft-like noise simulation */
+            background-color: #242528;
+            background-image: linear-gradient(rgba(0,0,0,0.05) 50%, transparent 50%),
+                              linear-gradient(90deg, rgba(0,0,0,0.05) 50%, transparent 50%);
+            background-size: 4px 4px;
+        }
+
+        /* 3D shading sides */
+        .face.front  { filter: brightness(1.0); }
+        .face.back   { filter: brightness(0.65); }
+        .face.left   { filter: brightness(0.85); }
+        .face.right  { filter: brightness(0.85); }
+        .face.top    { filter: brightness(1.2); }
+        .face.bottom { filter: brightness(0.4); }
+
+        /* Abdomen: rear segment */
+        .abdomen {
+            left: -20px;
+            top: -14px;
+            width: 40px;
+            height: 28px;
+            transform-style: preserve-3d;
+            transform: translate3d(0, -2px, -36px);
+        }
+        .abdomen .front  { width: 40px; height: 28px; transform: translateZ(24px); }
+        .abdomen .back   { width: 40px; height: 28px; transform: rotateY(180deg) translateZ(24px); }
+        .abdomen .left   { width: 48px; height: 28px; transform: rotateY(-90deg) translateZ(20px); left: -4px; }
+        .abdomen .right  { width: 48px; height: 28px; transform: rotateY(90deg) translateZ(20px); left: -4px; }
+        .abdomen .top    { width: 40px; height: 48px; transform: rotateX(90deg) translateZ(14px); top: -10px; }
+        .abdomen .bottom { width: 40px; height: 48px; transform: rotateX(-90deg) translateZ(14px); top: -10px; }
+
+        /* Thorax: middle segment */
+        .thorax {
+            left: -12px;
+            top: -10px;
+            width: 24px;
+            height: 20px;
+            transform-style: preserve-3d;
+            transform: translate3d(0, 2px, 0);
+        }
+        .thorax .front  { width: 24px; height: 20px; transform: translateZ(12px); }
+        .thorax .back   { width: 24px; height: 20px; transform: rotateY(180deg) translateZ(12px); }
+        .thorax .left   { width: 24px; height: 20px; transform: rotateY(-90deg) translateZ(12px); }
+        .thorax .right  { width: 24px; height: 20px; transform: rotateY(90deg) translateZ(12px); }
+        .thorax .top    { width: 24px; height: 24px; transform: rotateX(90deg) translateZ(10px); top: -2px; }
+        .thorax .bottom { width: 24px; height: 24px; transform: rotateX(-90deg) translateZ(10px); top: -2px; }
+
+        /* Head: front segment */
+        .head {
+            left: -16px;
+            top: -12px;
+            width: 32px;
+            height: 24px;
+            transform-style: preserve-3d;
+            transform: translate3d(0, 0, 20px);
+        }
+        .head .front  { width: 32px; height: 24px; transform: translateZ(12px); }
+        .head .back   { width: 32px; height: 24px; transform: rotateY(180deg) translateZ(12px); }
+        .head .left   { width: 24px; height: 24px; transform: rotateY(-90deg) translateZ(16px); left: 4px; }
+        .head .right  { width: 24px; height: 24px; transform: rotateY(90deg) translateZ(16px); left: 4px; }
+        .head .top    { width: 32px; height: 24px; transform: rotateX(90deg) translateZ(12px); }
+        .head .bottom { width: 32px; height: 24px; transform: rotateX(-90deg) translateZ(12px); }
+
+        /* Red glowing eyes: Minecraft Spider style */
+        .spider-eye {
+            position: absolute;
+            background: #ff003c;
+            box-shadow: 0 0 6px #ff476e;
+            border-radius: 1px;
+        }
+        /* Left main eye */
+        .head .front .eye-l-main {
+            left: 5px;
+            top: 9px;
+            width: 7px;
+            height: 6px;
+        }
+        /* Right main eye */
+        .head .front .eye-r-main {
+            right: 5px;
+            top: 9px;
+            width: 7px;
+            height: 6px;
+        }
+        /* Smaller side eyes */
+        .head .front .eye-l-sub1 { left: 14px; top: 7px; width: 3px; height: 3px; }
+        .head .front .eye-r-sub1 { right: 14px; top: 7px; width: 3px; height: 3px; }
+        .head .front .eye-l-sub2 { left: 4px; top: 16px; width: 4px; height: 3px; }
+        .head .front .eye-r-sub2 { right: 4px; top: 16px; width: 4px; height: 3px; }
+
+        /* Chelicerae/Mandibles */
+        .chelicera-l, .chelicera-r {
+            position: absolute;
+            width: 6px;
+            height: 10px;
+            background: #111215;
+            border: 1px solid rgba(0, 0, 0, 0.8);
+            top: 24px;
+        }
+        .chelicera-l { left: 8px; }
+        .chelicera-r { right: 8px; }
+
+        /* 3D Legs */
+        .leg {
+            position: absolute;
+            width: 0;
+            height: 0;
+            transform-style: preserve-3d;
+            /* Default transform values */
+            --rot-z: -22deg;
+            --rot-y: 0deg;
+            --rot-x: 0deg;
+            transform: translate3d(var(--tx), var(--ty), var(--tz)) rotateY(var(--rot-y)) rotateZ(var(--rot-z)) rotateX(var(--rot-x));
+            transform-origin: var(--origin);
+        }
+
+        .leg-box {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            transform-style: preserve-3d;
+            left: -4px;
+            top: -4px;
+        }
+        .leg-box .front  { width: 8px; height: 8px; transform: translateZ(35px); background: #18191c; }
+        .leg-box .back   { width: 8px; height: 8px; transform: rotateY(180deg) translateZ(35px); background: #121315; }
+        .leg-box .left   { width: 70px; height: 8px; transform: rotateY(-90deg) translateZ(4px); background: #141517; left: -31px; }
+        .leg-box .right  { width: 70px; height: 8px; transform: rotateY(90deg) translateZ(4px); background: #1c1d21; left: -31px; }
+        .leg-box .top    { width: 8px; height: 70px; transform: rotateX(90deg) translateZ(4px); background: #26272c; top: -31px; }
+        .leg-box .bottom { width: 8px; height: 70px; transform: rotateX(-90deg) translateZ(4px); background: #0c0c0e; top: -31px; }
+
+        /* Left Legs layout: L1, L2, L3, L4 */
+        .leg.l1 { --tx: -12px; --ty: 2px; --tz: 8px; --rot-y: -48deg; --origin: 100% 50% 0; }
+        .leg.l2 { --tx: -12px; --ty: 2px; --tz: 2px; --rot-y: -18deg; --origin: 100% 50% 0; }
+        .leg.l3 { --tx: -12px; --ty: 2px; --tz: -4px; --rot-y: 18deg; --origin: 100% 50% 0; }
+        .leg.l4 { --tx: -12px; --ty: 2px; --tz: -10px; --rot-y: 48deg; --origin: 100% 50% 0; }
+
+        /* Right Legs layout: R1, R2, R3, R4 (Z rotation is positive, origin is different) */
+        .leg.r1 { --tx: 12px; --ty: 2px; --tz: 8px; --rot-y: 48deg; --rot-z: 22deg; --origin: 0% 50% 0; }
+        .leg.r2 { --tx: 12px; --ty: 2px; --tz: 2px; --rot-y: 18deg; --rot-z: 22deg; --origin: 0% 50% 0; }
+        .leg.r3 { --tx: 12px; --ty: 2px; --tz: -4px; --rot-y: -18deg; --rot-z: 22deg; --origin: 0% 50% 0; }
+        .leg.r4 { --tx: 12px; --ty: 2px; --tz: -10px; --rot-y: -48deg; --rot-z: 22deg; --origin: 0% 50% 0; }
+
+        /* Leg Swing Keyframes (Walking) */
+        .spider-viewport.scanning .leg.cycle-a {
+            animation: mc-leg-walk-a 0.3s infinite alternate ease-in-out;
+        }
+        .spider-viewport.scanning .leg.cycle-b {
+            animation: mc-leg-walk-b 0.3s infinite alternate ease-in-out;
+        }
+        /* Right legs need separate cycle due to mirroring */
+        .spider-viewport.scanning .leg.cycle-a-right {
+            animation: mc-leg-walk-a-right 0.3s infinite alternate ease-in-out;
+        }
+        .spider-viewport.scanning .leg.cycle-b-right {
+            animation: mc-leg-walk-b-right 0.3s infinite alternate ease-in-out;
+        }
+
+        /* Left Side Walk Cycles */
+        @keyframes mc-leg-walk-a {
+            0%   { transform: translate3d(var(--tx), var(--ty), var(--tz)) rotateY(var(--rot-y)) rotateZ(-28deg) rotateX(-12deg); }
+            100% { transform: translate3d(var(--tx), var(--ty), var(--tz)) rotateY(var(--rot-y)) rotateZ(-16deg) rotateX(12deg); }
+        }
+        @keyframes mc-leg-walk-b {
+            0%   { transform: translate3d(var(--tx), var(--ty), var(--tz)) rotateY(var(--rot-y)) rotateZ(-16deg) rotateX(12deg); }
+            100% { transform: translate3d(var(--tx), var(--ty), var(--tz)) rotateY(var(--rot-y)) rotateZ(-28deg) rotateX(-12deg); }
+        }
+
+        /* Right Side Walk Cycles */
+        @keyframes mc-leg-walk-a-right {
+            0%   { transform: translate3d(var(--tx), var(--ty), var(--tz)) rotateY(var(--rot-y)) rotateZ(28deg) rotateX(-12deg); }
+            100% { transform: translate3d(var(--tx), var(--ty), var(--tz)) rotateY(var(--rot-y)) rotateZ(16deg) rotateX(12deg); }
+        }
+        @keyframes mc-leg-walk-b-right {
+            0%   { transform: translate3d(var(--tx), var(--ty), var(--tz)) rotateY(var(--rot-y)) rotateZ(16deg) rotateX(12deg); }
+            100% { transform: translate3d(var(--tx), var(--ty), var(--tz)) rotateY(var(--rot-y)) rotateZ(28deg) rotateX(-12deg); }
+        }
+
+        /* Active scanning body movement speed up */
+        .spider-viewport.scanning .mc-spider {
+            animation: mc-spider-bob-active 0.3s infinite alternate ease-in-out;
+        }
+        @keyframes mc-spider-bob-active {
+            0% { transform: translate3d(0, 8px, 0) rotateX(-20deg) rotateY(-38deg) rotateZ(-2deg) scale3d(1.7, 1.7, 1.7); }
+            100% { transform: translate3d(0, -2px, 0) rotateX(-16deg) rotateY(-32deg) rotateZ(2deg) scale3d(1.7, 1.7, 1.7); }
+        }
+
+        @media (max-width: 1024px) {
+            .scan-monitor-panel {
+                grid-template-columns: 1fr;
+            }
+            .spider-center-container {
+                order: -1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-title">
+                <h1>RIKMS Verification & Security</h1>
+                <p>Audits, quality validation checks, and security report details</p>
+            </div>
+            <div class="action-bar" style="display: flex; gap: 1rem; align-items: center;">
+                <div class="mode-toggle">
+                    <button id="btn-mode-exec" class="mode-btn active" onclick="setDashboardMode('executive')">Executive Summary</button>
+                    <button id="btn-mode-tech" class="mode-btn" onclick="setDashboardMode('technical')">Technical View</button>
+                </div>
+                <button class="refresh-btn" onclick="loadAllData()">Refresh Dashboard</button>
+            </div>
+        </header>
+
+        <!-- Active Scan Progress Monitor -->
+        <section class="scan-monitor-panel">
+            <!-- Left Side Indicators: Static & Quality -->
+            <div class="scan-status-side-board">
+                <div class="side-board-title">Static & Quality Checks</div>
+                <div class="scan-status-side-list">
+                    <div class="scan-status-item">
+                        <span class="scan-name">PHPUnit Quality Suite</span>
+                        <span id="scan-status-phpunit" class="scan-badge pending">Pending</span>
+                    </div>
+                    <div class="scan-status-item">
+                        <span class="scan-name">Larastan Static Scan (SAST)</span>
+                        <span id="scan-status-larastan" class="scan-badge pending">Pending</span>
+                    </div>
+                    <div class="scan-status-item">
+                        <span class="scan-name">Dependencies (SCA Audit)</span>
+                        <span id="scan-status-sca" class="scan-badge pending">Pending</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center 3D Spider (Web) -->
+            <div class="spider-center-container">
+                <div class="scan-global-header">
+                    <span id="scan-global-status">Initializing scans...</span>
+                </div>
+                <div class="spider-viewport" id="spider-viewport">
+                    <div class="mc-spider">
+                        <!-- Abdomen -->
+                        <div class="cube abdomen">
+                            <div class="face front"></div>
+                            <div class="face back"></div>
+                            <div class="face left"></div>
+                            <div class="face right"></div>
+                            <div class="face top"></div>
+                            <div class="face bottom"></div>
+                        </div>
+                        <!-- Thorax -->
+                        <div class="cube thorax">
+                            <div class="face front"></div>
+                            <div class="face back"></div>
+                            <div class="face left"></div>
+                            <div class="face right"></div>
+                            <div class="face top"></div>
+                            <div class="face bottom"></div>
+                        </div>
+                        <!-- Head -->
+                        <div class="cube head">
+                            <div class="face front">
+                                <div class="spider-eye eye-l-main"></div>
+                                <div class="spider-eye eye-r-main"></div>
+                                <div class="spider-eye eye-l-sub1"></div>
+                                <div class="spider-eye eye-r-sub1"></div>
+                                <div class="spider-eye eye-l-sub2"></div>
+                                <div class="spider-eye eye-r-sub2"></div>
+                                <div class="chelicera-l"></div>
+                                <div class="chelicera-r"></div>
+                            </div>
+                            <div class="face back"></div>
+                            <div class="face left"></div>
+                            <div class="face right"></div>
+                            <div class="face top"></div>
+                            <div class="face bottom"></div>
+                        </div>
+                        <!-- Legs Left -->
+                        <div class="leg l1 cycle-a">
+                            <div class="cube leg-box">
+                                <div class="face front"></div>
+                                <div class="face back"></div>
+                                <div class="face left"></div>
+                                <div class="face right"></div>
+                                <div class="face top"></div>
+                                <div class="face bottom"></div>
+                            </div>
+                        </div>
+                        <div class="leg l2 cycle-b">
+                            <div class="cube leg-box">
+                                <div class="face front"></div>
+                                <div class="face back"></div>
+                                <div class="face left"></div>
+                                <div class="face right"></div>
+                                <div class="face top"></div>
+                                <div class="face bottom"></div>
+                            </div>
+                        </div>
+                        <div class="leg l3 cycle-a">
+                            <div class="cube leg-box">
+                                <div class="face front"></div>
+                                <div class="face back"></div>
+                                <div class="face left"></div>
+                                <div class="face right"></div>
+                                <div class="face top"></div>
+                                <div class="face bottom"></div>
+                            </div>
+                        </div>
+                        <div class="leg l4 cycle-b">
+                            <div class="cube leg-box">
+                                <div class="face front"></div>
+                                <div class="face back"></div>
+                                <div class="face left"></div>
+                                <div class="face right"></div>
+                                <div class="face top"></div>
+                                <div class="face bottom"></div>
+                            </div>
+                        </div>
+                        <!-- Legs Right -->
+                        <div class="leg r1 cycle-b-right">
+                            <div class="cube leg-box">
+                                <div class="face front"></div>
+                                <div class="face back"></div>
+                                <div class="face left"></div>
+                                <div class="face right"></div>
+                                <div class="face top"></div>
+                                <div class="face bottom"></div>
+                            </div>
+                        </div>
+                        <div class="leg r2 cycle-a-right">
+                            <div class="cube leg-box">
+                                <div class="face front"></div>
+                                <div class="face back"></div>
+                                <div class="face left"></div>
+                                <div class="face right"></div>
+                                <div class="face top"></div>
+                                <div class="face bottom"></div>
+                            </div>
+                        </div>
+                        <div class="leg r3 cycle-b-right">
+                            <div class="cube leg-box">
+                                <div class="face front"></div>
+                                <div class="face back"></div>
+                                <div class="face left"></div>
+                                <div class="face right"></div>
+                                <div class="face top"></div>
+                                <div class="face bottom"></div>
+                            </div>
+                        </div>
+                        <div class="leg r4 cycle-a-right">
+                            <div class="cube leg-box">
+                                <div class="face front"></div>
+                                <div class="face back"></div>
+                                <div class="face left"></div>
+                                <div class="face right"></div>
+                                <div class="face top"></div>
+                                <div class="face bottom"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="spider-label" id="spider-state-label">Pentesting target boundaries...</div>
+                </div>
+            </div>
+
+            <!-- Right Side Indicators: Dynamic & Penetration -->
+            <div class="scan-status-side-board">
+                <div class="side-board-title">Dynamic & Pentest Scans</div>
+                <div class="scan-status-side-list">
+                    <div class="scan-status-item">
+                        <span class="scan-name">Laravel Endpoint Discovery</span>
+                        <span id="scan-status-routes" class="scan-badge pending">Pending</span>
+                    </div>
+                    <div class="scan-status-item">
+                        <span class="scan-name">Native Boundary Prober</span>
+                        <span id="scan-status-native" class="scan-badge pending">Pending</span>
+                    </div>
+                    <div class="scan-status-item">
+                        <span class="scan-name">OWASP ZAP Dynamic Audit</span>
+                        <span id="scan-status-zap" class="scan-badge pending">Pending</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Executive Security Summary Section -->
+        <section class="executive-panel">
+            <div class="score-circle-container">
+                <div class="score-circle">
+                    <svg viewBox="0 0 100 100">
+                        <circle class="bg-ring" cx="50" cy="50" r="40" />
+                        <circle class="val-ring" id="health-ring" cx="50" cy="50" r="40" stroke-dasharray="251.2" stroke-dashoffset="251.2" />
+                    </svg>
+                    <div class="score-text">
+                        <span id="health-score-val">0</span>
+                        <span>Health Score</span>
+                    </div>
+                </div>
+                <div style="margin-top: 1rem;">
+                    <span id="health-status-badge" class="health-badge poor">CALCULATING...</span>
+                </div>
+            </div>
+            <div class="executive-summary-content">
+                <h2>Executive Health Summary</h2>
+                <p id="executive-summary-text">
+                    Calculating audit parameters... Please make sure that your tests, code checks, and vulnerability reports have been loaded.
+                </p>
+                <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                        <strong>Functional Quality:</strong> <span id="summary-functional-status">Passed (100%)</span>
+                    </div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                        <strong>Code Architecture (SAST):</strong> <span id="summary-sast-status">N/A</span>
+                    </div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                        <strong>Security Config (DAST):</strong> <span id="summary-dast-status">N/A</span>
+                    </div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                        <strong>Boundary Audit (Native):</strong> <span id="summary-native-status">N/A</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('tests')">PHPUnit Tests</button>
+            <button class="tab-btn" onclick="switchTab('larastan')">SAST (Larastan)</button>
+            <button class="tab-btn" onclick="switchTab('zap')">DAST (OWASP ZAP)</button>
+            <button class="tab-btn" onclick="switchTab('sca')">Supply Chain (SCA)</button>
+            <button class="tab-btn" onclick="switchTab('native')">Boundary Audit (Native)</button>
+        </div>
+
+        <!-- ================= PHPUNIT TAB ================= -->
+        <div id="tab-tests" class="tab-content active">
+            <section class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Total Tests</div>
+                    <div class="metric-value" id="test-total">0</div>
+                    <div class="metric-subtext">Verified functions & routes</div>
+                </div>
+                <div class="metric-card passed">
+                    <div class="metric-label">Passed</div>
+                    <div class="metric-value" id="test-passed" style="color: var(--color-passed);">0</div>
+                    <div class="metric-subtext" id="test-pass-pct">0% Success Rate</div>
+                </div>
+                <div class="metric-card failed">
+                    <div class="metric-label">Failed</div>
+                    <div class="metric-value" id="test-failed" style="color: var(--color-failed);">0</div>
+                    <div class="metric-subtext">Requires code adjustments</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Duration</div>
+                    <div class="metric-value" id="test-duration" style="color: #3b82f6;">0.00s</div>
+                    <div class="metric-subtext" id="test-avg-time">Avg: 0.00s / test</div>
+                </div>
+            </section>
+
+            <section class="viz-grid">
+                <div class="viz-card">
+                    <h2>Test Statuses</h2>
+                    <div class="chart-container">
+                        <canvas id="testPieChart"></canvas>
+                    </div>
+                </div>
+                <div class="viz-card">
+                    <h2>Top Slowest Test Cases</h2>
+                    <div class="chart-container">
+                        <canvas id="testBarChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Scan Context Card -->
+            <div class="scan-context-card">
+                <div><strong>📅 Time & Date Tested:</strong> <span id="test-scan-time">Pending scan...</span></div>
+                <div><strong>🔍 Type of Test:</strong> Functional & Integrity Quality Suite</div>
+                <div><strong>🎓 What is scanned (Non-Technical):</strong> Tests if user interfaces, pages, and key workflows behave as expected for teachers and students, blocking unauthorized logins and actions. It acts like a digital inspector verifying the application's foundation works.</div>
+            </div>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>Test Case Details</h2>
+                    <input type="text" id="testSearch" class="search-input" placeholder="Search test cases..." oninput="filterTests()">
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 20%;">Module / Component</th>
+                                <th style="width: 18%;">Type of Test</th>
+                                <th>What is Scanned (Friendly Explanation)</th>
+                                <th style="width: 12%;">Status</th>
+                                <th style="width: 12%;">Execution Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="testTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= LARASTAN TAB ================= -->
+        <div id="tab-larastan" class="tab-content">
+            <section class="metrics-grid">
+                <div class="metric-card" id="sast-status-card">
+                    <div class="metric-label">SAST Scan Status</div>
+                    <div class="metric-value" id="sast-status">N/A</div>
+                    <div class="metric-subtext">Static analysis health state</div>
+                </div>
+                <div class="metric-card failed">
+                    <div class="metric-label">Total Code Errors</div>
+                    <div class="metric-value" id="sast-errors" style="color: var(--color-failed);">0</div>
+                    <div class="metric-subtext">Issues flagged by parser</div>
+                </div>
+            </section>
+
+            <!-- Scan Context Card -->
+            <div class="scan-context-card">
+                <div><strong>📅 Time & Date Tested:</strong> <span id="larastan-scan-time">Pending scan...</span></div>
+                <div><strong>🔍 Type of Test:</strong> Static Code Security Analysis (SAST)</div>
+                <div><strong>🎓 What is scanned (Non-Technical):</strong> Automatically reads through every line of programming code in the application to find typos, logical bugs, type mismatches, or security bugs before the website is published. It acts like an automated proofreader for the developer's work.</div>
+            </div>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>Larastan Code Violations</h2>
+                    <input type="text" id="sastSearch" class="search-input" placeholder="Search errors..." oninput="filterLarastan()">
+                </div>
+                <div class="table-wrapper" id="larastan-table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">File Location</th>
+                                <th>Business Impact & Analysis</th>
+                            </tr>
+                        </thead>
+                        <tbody id="larastanTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="larastan-no-data" class="no-data-msg" style="display: none;">
+                    No Larastan analysis report found in the root directory. To generate it, run:
+                    <code>php vendor/bin/phpstan analyse --error-format=json > larastan-report.json</code>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= OWASP ZAP TAB ================= -->
+        <div id="tab-zap" class="tab-content">
+            <section class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Total Alerts</div>
+                    <div class="metric-value" id="zap-total">0</div>
+                    <div class="metric-subtext">Unique security vulnerabilities</div>
+                </div>
+                <div class="metric-card high-alert">
+                    <div class="metric-label">High Risk</div>
+                    <div class="metric-value" id="zap-high" style="color: var(--color-high);">0</div>
+                    <div class="metric-subtext">Critical risk issues</div>
+                </div>
+                <div class="metric-card warn-alert">
+                    <div class="metric-label">Medium Risk</div>
+                    <div class="metric-value" id="zap-medium" style="color: var(--color-medium);">0</div>
+                    <div class="metric-subtext">Medium risk alerts</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Low & Info</div>
+                    <div class="metric-value" id="zap-low" style="color: var(--color-low);">0</div>
+                    <div class="metric-subtext">Minor alerts & disclosures</div>
+                </div>
+            </section>
+
+            <!-- Guide Panel (Always available for easy instruction lookup) -->
+            <section class="panel zap-guide-panel" style="margin-bottom: 2rem; border: 1px solid var(--border-glass);">
+                <div class="panel-header" style="border-bottom: 1px solid var(--border-glass); padding-bottom: 1rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="toggleZapGuide()">
+                    <h2 style="display: flex; align-items: center; gap: 0.5rem; font-size: 1.15rem; color: #a5b4fc;">
+                        <span>🛡️</span> Step-by-Step OWASP ZAP Scan Guide & Automation
+                    </h2>
+                    <span id="zap-guide-toggle-icon" style="color: #818cf8; font-size: 0.85rem; font-family: var(--font-mono); text-decoration: underline;">[ Show Guide ]</span>
+                </div>
+                <div id="zap-guide-content" style="margin-top: 1.25rem; display: none; font-size: 0.95rem; line-height: 1.6;">
+                    <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+                        OWASP ZAP (Zed Attack Proxy) performs Dynamic Application Security Testing (DAST) by probing the running application from the outside, validating all vulnerability vectors listed in the project's penetration testing checklist.
+                    </p>
+                    <ol style="margin-left: 1.5rem; padding-left: 0.5rem; display: flex; flex-direction: column; gap: 0.75rem; color: #d1d5db;">
+                        <li>
+                            <strong>Install OWASP ZAP Desktop:</strong> Download ZAP for Windows from <a href="https://www.zaproxy.org/download/" target="_blank" style="color: #818cf8; text-decoration: underline;">zaproxy.org/download</a> and install it.
+                        </li>
+                        <li>
+                            <strong>Run the Target Application:</strong> Open a separate terminal and start your Laravel development server:
+                            <code style="display: block; background: rgba(0,0,0,0.3); padding: 0.5rem; border-radius: 6px; font-family: var(--font-mono); margin-top: 0.4rem; color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.2);">php artisan serve</code>
+                            Ensure this runs on <code style="color: #a5b4fc; font-family: var(--font-mono);">http://localhost:8000</code> or <code style="color: #a5b4fc; font-family: var(--font-mono);">http://127.0.0.1:8000</code>.
+                        </li>
+                        <li>
+                            <strong>Configure the Automated Scan:</strong>
+                            <ul style="margin-left: 1.25rem; margin-top: 0.25rem; list-style-type: circle; display: flex; flex-direction: column; gap: 0.25rem;">
+                                <li>Open <strong>OWASP ZAP Desktop</strong>.</li>
+                                <li>Click on the <strong>Quick Start</strong> tab in the middle pane.</li>
+                                <li>Click the big <strong>Automated Scan</strong> button.</li>
+                                <li>Set <strong>URL to attack</strong> to: <code style="color: #818cf8; font-family: var(--font-mono);">http://127.0.0.1:8000</code></li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Launch Attack:</strong> Click the <strong>Attack</strong> button. ZAP will run a spider crawl followed by active dynamic testing. This simulates real attacks (XSS, SQL Injection, IDOR, Traversal, etc.).
+                        </li>
+                        <li>
+                            <strong>Generate & Save JSON Report:</strong>
+                            <ul style="margin-left: 1.25rem; margin-top: 0.25rem; list-style-type: circle; display: flex; flex-direction: column; gap: 0.25rem;">
+                                <li>Wait for both progress bars at the bottom to reach 100%.</li>
+                                <li>Go to the top menu and select: <strong>Report</strong> &gt; <strong>Generate Report</strong>.</li>
+                                <li>Under **Template**, select <strong>JSON Report</strong> (this is crucial for parsing).</li>
+                                <li>Click <strong>Generate Report</strong> and save the file directly in the RIKMS root folder as:
+                                    <code style="color: #10b981; font-family: var(--font-mono); font-weight: bold;">zap-report.json</code>
+                                </li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Visualize:</strong> Click the <strong>Refresh Dashboard</strong> button at the top of this dashboard page.
+                        </li>
+                    </ol>
+                    <div style="margin-top: 1.25rem; background: rgba(99, 102, 241, 0.08); border-left: 3px solid #6366f1; padding: 1rem; border-radius: 0 8px 8px 0; color: #a5b4fc; font-size: 0.9rem;">
+                        <strong>🤖 Dashboard Scan Automation:</strong><br>
+                        This dashboard script has been automated to search for standard ZAP installations on your computer (in standard Program Files paths or system PATH) and trigger a headlessly automated quick scan against the Laravel app if it detects it running on port 8000 or 8080! Check the python terminal log for scan progress.
+                    </div>
+                </div>
+            </section>
+
+            <!-- Scan Context Card -->
+            <div class="scan-context-card">
+                <div><strong>📅 Time & Date Tested:</strong> <span id="zap-scan-time">Pending scan...</span></div>
+                <div><strong>🔍 Type of Test:</strong> Dynamic Vulnerability Penetration Test (DAST)</div>
+                <div><strong>🎓 What is scanned (Non-Technical):</strong> Simulates a mock hacker trying to break into the running application from the outside. It searches for common vulnerabilities like SQL database leaks, cross-site scripting (XSS), and permission bypasses on pages and login links.</div>
+            </div>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>Auditing Alerts</h2>
+                    <input type="text" id="zapSearch" class="search-input" placeholder="Search security alerts..." oninput="filterZap()">
+                </div>
+                <div class="table-wrapper" id="zap-table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 15%;">Risk</th>
+                                <th style="width: 25%;">Vulnerability Title</th>
+                                <th>Business Impact & Action Required</th>
+                            </tr>
+                        </thead>
+                        <tbody id="zapTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="zap-no-data" class="no-data-msg" style="display: none;">
+                    No OWASP ZAP alert report found in the root directory. To generate it, save your ZAP scan alerts report as:
+                    <code>zap-report.json</code>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= SUPPLY CHAIN (SCA) TAB ================= -->
+        <div id="tab-sca" class="tab-content">
+            <section class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Composer Issues</div>
+                    <div class="metric-value" id="sca-composer-count">0</div>
+                    <div class="metric-subtext">PHP dependency advisories</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">NPM Issues</div>
+                    <div class="metric-value" id="sca-npm-count">0</div>
+                    <div class="metric-subtext">Node module vulnerabilities</div>
+                </div>
+                <div class="metric-card" id="sca-status-card">
+                    <div class="metric-label">Supply Chain Status</div>
+                    <div class="metric-value" id="sca-status-value" style="font-size: 1.5rem;">Checking...</div>
+                    <div class="metric-subtext">Vulnerability audit scan result</div>
+                </div>
+            </section>
+
+            <!-- Scan Context Card -->
+            <div class="scan-context-card">
+                <div><strong>📅 Time & Date Tested:</strong> <span id="sca-scan-time">Pending scan...</span></div>
+                <div><strong>🔍 Type of Test:</strong> Software Supply Chain & Dependency Audit (SCA)</div>
+                <div><strong>🎓 What is scanned (Non-Technical):</strong> Scans the list of external plugins, software libraries, and packages used by the application (Composer for backend, NPM for frontend) to check if any of them contain publicly reported security flaws that need upgrading.</div>
+            </div>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>PHP Dependencies (Composer Audit)</h2>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 20%;">Package</th>
+                                <th style="width: 15%;">Severity</th>
+                                <th style="width: 15%;">CVE</th>
+                                <th>Advisory Description</th>
+                                <th style="width: 10%;">Link</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scaComposerTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="sca-composer-no-data" class="no-data-msg" style="display: none; padding: 1.5rem; text-align: center; color: var(--text-secondary);">
+                    No composer vulnerabilities detected or composer-audit-report.json missing.
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>JavaScript Dependencies (NPM Audit)</h2>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 20%;">Package</th>
+                                <th style="width: 15%;">Severity</th>
+                                <th style="width: 15%;">CVE</th>
+                                <th>Advisory Description</th>
+                                <th style="width: 10%;">Link</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scaNpmTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="sca-npm-no-data" class="no-data-msg" style="display: none; padding: 1.5rem; text-align: center; color: var(--text-secondary);">
+                    No NPM vulnerabilities detected or npm-audit-report.json missing.
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= NATIVE BOUNDARY AUDIT TAB ================= -->
+        <div id="tab-native" class="tab-content">
+            <section class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Total Probes Run</div>
+                    <div class="metric-value" id="native-total-count">0</div>
+                    <div class="metric-subtext">Active boundary tests</div>
+                </div>
+                <div class="metric-card passed">
+                    <div class="metric-label">Passed</div>
+                    <div class="metric-value" id="native-passed-count" style="color: var(--color-passed);">0</div>
+                    <div class="metric-subtext">Secure configurations</div>
+                </div>
+                <div class="metric-card" id="native-failed-card">
+                    <div class="metric-label">Failed / Warnings</div>
+                    <div class="metric-value" id="native-failed-count" style="color: var(--color-failed);">0</div>
+                    <div class="metric-subtext">Need remediation</div>
+                </div>
+            </section>
+
+            <!-- Scan Context Card -->
+            <div class="scan-context-card">
+                <div><strong>📅 Time & Date Tested:</strong> <span id="native-scan-time">Pending scan...</span></div>
+                <div><strong>🔍 Type of Test:</strong> Configuration & API Access Control Audit</div>
+                <div><strong>🎓 What is scanned (Non-Technical):</strong> Tests specific server boundary policies, login failure handling, session timeouts, secure cookie flags, and database access points to make sure student data and research uploads cannot be leaked or tampered with.</div>
+            </div>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>Native Boundary Verification Checks</h2>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 10%;">ID</th>
+                                <th style="width: 25%;">Check Title</th>
+                                <th style="width: 10%;">Status</th>
+                                <th style="width: 10%;">Severity</th>
+                                <th>Observed Behaviour & Action Required</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nativeTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="native-no-data" class="no-data-msg" style="display: none;">
+                    No native security reports detected. Run scan to populate.
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        // Data stores
+        let testData = [];
+        let larastanData = null;
+        let zapData = [];
+        let scaData = { composer: [], npm: [] };
+        let nativeData = [];
+
+        // Chart instances
+        let testPieInstance = null;
+        let testBarInstance = null;
+
+        // Toggle ZAP Guide panel
+        function toggleZapGuide() {
+            const content = document.getElementById('zap-guide-content');
+            const icon = document.getElementById('zap-guide-toggle-icon');
+            if (content.style.display === 'none' || content.style.display === '') {
+                content.style.display = 'block';
+                icon.innerText = '[ Hide Guide ]';
+            } else {
+                content.style.display = 'none';
+                icon.innerText = '[ Show Guide ]';
+            }
+        }
+
+        // Toggle dashboard view
+        function setDashboardMode(mode) {
+            document.getElementById('btn-mode-exec').classList.remove('active');
+            document.getElementById('btn-mode-tech').classList.remove('active');
+            document.body.classList.remove('technical-mode');
+
+            if (mode === 'technical') {
+                document.getElementById('btn-mode-tech').classList.add('active');
+                document.body.classList.add('technical-mode');
+            } else {
+                document.getElementById('btn-mode-exec').classList.add('active');
+            }
+        }
+
+        function getTestFriendlyDetails(className, testName) {
+            let type = "Feature Verification";
+            let target = "General System Integrity";
+
+            if (!className || !testName) {
+                return { type, target };
+            }
+
+            const nameLower = String(testName).toLowerCase();
+            const classLower = String(className).toLowerCase();
+
+            if (classLower.includes('brokenaccess') || nameLower.includes('access') || nameLower.includes('guest') || nameLower.includes('visibility') || nameLower.includes('policy')) {
+                type = "Privacy & Access Boundary";
+                target = "Verifies that guests, students, and teachers can only view public research. It confirms private drafts and document access policies are strictly locked down.";
+            } else if (classLower.includes('documentprocessing') || nameLower.includes('upload') || nameLower.includes('file')) {
+                type = "File Safety & Malware Scan";
+                target = "Ensures uploaded research papers are processed, indexed, scanned for viruses (like the standard EICAR test signature), and stored on private disk drives.";
+            } else if (classLower.includes('ai') || nameLower.includes('ai') || nameLower.includes('analyze')) {
+                type = "AI Summary & Tagging Test";
+                target = "Checks the Gemini AI model's capability to safely extract abstracts, titles, and SDGs from PDFs without mutating records without human review.";
+            } else if (classLower.includes('security') || nameLower.includes('csrf') || nameLower.includes('throttle') || nameLower.includes('cookie') || nameLower.includes('login')) {
+                type = "Cybersecurity Defensive Scan";
+                target = "Validates the application's core defenses against login brute-forcing, cross-site forgery (CSRF), session leaks, and secure cookie settings.";
+            } else if (classLower.includes('example') || classLower.includes('release') || nameLower.includes('homepage') || nameLower.includes('dashboard')) {
+                type = "Page Interface Check";
+                target = "Ensures critical pages (like search engine, public browse lists, or administrator control panels) render properly and load content.";
+            } else if (nameLower.includes('workflow') || nameLower.includes('approve') || nameLower.includes('reject') || nameLower.includes('submit')) {
+                type = "Publishing Workflow Check";
+                target = "Checks that document status transitions (Draft -> Under Review -> Published -> Archived) occur in the correct order and require authorized approval.";
+            }
+
+            return { type, target };
+        }
+
+        // Translation Maps for Non-Technical Users (SAST)
+        function translateLarastanError(msg) {
+            if (!msg) return { impact: "Unknown Static Analysis Warning", remedy: "Inspect line details." };
+            msg = String(msg).toLowerCase();
+            if (msg.includes('undefined property') || msg.includes('has no property')) {
+                return {
+                    impact: "<strong>System Stability Risk:</strong> The program tried to access database information that does not exist. This could cause the page to crash or show error pages to agency administrators during document submission.",
+                    remedy: "Ensure the field is properly defined in your database migrations and documented in the Eloquent model attributes."
+                };
+            }
+            if (msg.includes('undefined method') || msg.includes('call to an undefined method')) {
+                return {
+                    impact: "<strong>Feature Reliability Risk:</strong> The system attempted to perform an action that was not defined in the code. This will cause operations (such as approving documents or extracting metadata) to fail completely when triggered.",
+                    remedy: "Verify the method name spelling and ensure it is declared in the target class or service helper."
+                };
+            }
+            if (msg.includes('expects') && msg.includes('given')) {
+                return {
+                    impact: "<strong>Data Integrity Risk:</strong> The system sent the wrong format of data (e.g. text instead of a number, or null/empty value instead of valid inputs). This could cause documents to be cataloged with corrupted or incomplete metadata records.",
+                    remedy: "Refine input validation rules, add default fallback values, and define strict parameter type definitions."
+                };
+            }
+            if (msg.includes('return type')) {
+                return {
+                    impact: "<strong>Functional Consistency Risk:</strong> A code function promised to return a specific type of output but delivered something else (or nothing). This is a source of silent logic failures in document approval processes.",
+                    remedy: "Check return statements inside the flagged functions and align them with the return type declarations."
+                };
+            }
+
+            return {
+                impact: "<strong>General Logic Bug:</strong> Statically detected quality warning. This could cause unexpected behavior under load or when resolving draft records.",
+                remedy: "Review code syntax for completeness and align parameter typing."
+            };
+        }
+
+        // Translation Maps for Non-Technical Users (DAST) - Mapped to Key Vulnerabilities in docx
+        function translateZapAlert(title) {
+            title = String(title || '').toLowerCase();
+
+            if (title.includes('clickjacking') || title.includes('x-frame-options')) {
+                return {
+                    impact: "<strong>User Hijacking Risk (Clickjacking - Security Misconfiguration):</strong> This vulnerability allows malicious websites to embed your application inside a hidden iframe. Attackers can overlay invisible buttons, tricking agency administrators into clicking buttons like 'Approve' or 'Delete' without their knowledge.",
+                    remedy: "Configure your web server or Laravel middleware to send the header: <code>X-Frame-Options: SAMEORIGIN</code>."
+                };
+            }
+            if (title.includes('content-type') || title.includes('sniffing')) {
+                return {
+                    impact: "<strong>Malicious File Execution Risk (MIME Sniffing - Security Misconfiguration):</strong> Without strict content type instructions, browsers might attempt to process document uploads as executable scripts. An attacker uploading a script disguised as a PDF could run malicious tasks in an administrator's browser.",
+                    remedy: "Implement the security header: <code>X-Content-Type-Options: nosniff</code> in the server response headers."
+                };
+            }
+            if (title.includes('httponly') || title.includes('cookie')) {
+                return {
+                    impact: "<strong>Session Hijacking Risk (Insecure Session / Cookie Misconfiguration):</strong> Login credentials/session indicators are stored in cookies that lack the 'HttpOnly' protection. If an attacker injects a script into the page, they can easily read this cookie and impersonate an administrator.",
+                    remedy: "Ensure session cookies are configured with the <code>http_only => true</code> flag in <code>config/session.php</code>."
+                };
+            }
+            if (title.includes('directory browsing') || title.includes('directory indexing')) {
+                return {
+                    impact: "<strong>Sensitive Data Leakage (Security Misconfiguration):</strong> Standard folder listing is allowed. Anyone can view the list of files in storage or public directories, potentially exposing private research documents or configuration assets.",
+                    remedy: "Disable directory indexing in the Web server configuration (e.g. <code>Options -Indexes</code> in Apache, or remove indexing in Nginx)."
+                };
+            }
+            if (title.includes('cors') || title.includes('cross-domain')) {
+                return {
+                    impact: "<strong>Information Disclosure Risk (CORS Vulnerability / Access Control):</strong> The server allows other websites to make requests and read data from your API endpoints without restrictions. Other domains could steal active session details.",
+                    remedy: "Restrict CORS origins in <code>config/cors.php</code> to only allow trusted domain names."
+                };
+            }
+            if (title.includes('sql injection') || title.includes('sql') || title.includes('database error')) {
+                return {
+                    impact: "<strong>Critical Data Exposure Risk (SQL Injection):</strong> Attackers can manipulate database queries through input fields (e.g. search/browse filters). This allows them to bypass authentication, read private research metadata, delete records, or extract administrator credentials.",
+                    remedy: "Ensure all database queries use Eloquent ORM or parameterized bindings. Avoid raw query strings (e.g. <code>DB::raw</code>) with concatenated user inputs."
+                };
+            }
+            if (title.includes('path traversal') || title.includes('directory traversal') || title.includes('file inclusion')) {
+                return {
+                    impact: "<strong>System File Access Risk (Path Traversal):</strong> Attackers can abuse file download or serving endpoints to access files outside the public storage directory (such as <code>.env</code> configurations or system files) by appending relative paths (e.g. <code>../../</code>).",
+                    remedy: "Use Laravel's <code>Storage::download()</code> or parse filenames using <code>basename()</code>. Never build file paths using raw concatenated user input strings."
+                };
+            }
+            if (title.includes('cross-site scripting') || title.includes('xss') || title.includes('script injection')) {
+                return {
+                    impact: "<strong>Session Hijacking & Defacement Risk (Cross-Site Scripting):</strong> Attackers inject malicious scripts into metadata fields (title, abstract, author). When an admin views the research record, the script runs in their browser, allowing session cookies to be stolen or actions to be performed on their behalf.",
+                    remedy: "Ensure all output in Blade views is escaped using double braces <code>{{ $value }}</code>. For rich-text fields, run them through an HTML purifier library before rendering."
+                };
+            }
+            if (title.includes('csrf') || title.includes('cross-site request forgery') || title.includes('session token')) {
+                return {
+                    impact: "<strong>Unauthorized State Modification Risk (CSRF):</strong> An attacker tricks an authenticated admin into clicking a link that triggers state-changing actions (e.g. changing passwords or deleting uploads) on RIKMS, exploiting their active session without their consent.",
+                    remedy: "Verify that the <code>App\\\\Http\\\\Middleware\\\\ValidateCsrfToken</code> middleware is enabled for all web routes, and always include the <code>@csrf</code> directive in Blade forms."
+                };
+            }
+            if (title.includes('access control') || title.includes('idor') || title.includes('insecure direct object reference') || title.includes('authorization')) {
+                return {
+                    impact: "<strong>Data Integrity & Privacy Leakage (IDOR / Broken Access Control):</strong> Users can access, edit, or download other users' research records simply by changing ID values in the URL (e.g., changing <code>/research/5</code> to <code>/research/6</code>) without proper permission validation.",
+                    remedy: "Implement Laravel Policies or Gates. Always verify model ownership (e.g., <code>$request->user()->can('view', $document)</code>) before returning files or metadata."
+                };
+            }
+            if (title.includes('file upload') || title.includes('unrestricted upload') || title.includes('upload vulnerability')) {
+                return {
+                    impact: "<strong>Remote Code Execution Risk (Unrestricted File Upload):</strong> Attackers upload malicious scripts (e.g. <code>.php</code> files) disguised as documents. If the server stores them in a public directory without verifying extensions, the attacker can execute commands on the server.",
+                    remedy: "Validate uploaded file extensions and MIME types strictly using Laravel's validation rules (e.g. <code>mimes:pdf,docx</code>). Store files outside the web root (e.g. using private storage disk) and serve them via a controller."
+                };
+            }
+            if (title.includes('rate limit') || title.includes('brute force') || title.includes('flooding')) {
+                return {
+                    impact: "<strong>Brute Force & Service Exhaustion Risk (Rate Limiting):</strong> Attackers can repeatedly submit login requests or upload huge files to crash the system or guess passwords without any rate limiting restrictions in place.",
+                    remedy: "Apply Laravel's rate limiting middleware (<code>throttle:api</code> or custom rate limiters) to sensitive routes like login, register, and document upload."
+                };
+            }
+
+            return {
+                impact: "<strong>Security Configuration Warning:</strong> Standard server setup discrepancy. It may allow attackers to perform passive scanning or collect system information.",
+                remedy: "Audit server response configurations and restrict header outputs to necessary metadata."
+            };
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            const btn = document.querySelector(`.tab-btn[onclick*="'${tabId}'"]`) || document.querySelector(`.tab-btn[onclick*="${tabId}"]`);
+            if (btn) {
+                btn.classList.add('active');
+            }
+
+            const content = document.getElementById('tab-' + tabId);
+            if (content) {
+                content.classList.add('active');
+            }
+        }
+
+        async function loadAllData() {
+            await Promise.all([
+                loadTestData(),
+                loadLarastanData(),
+                loadZapData(),
+                loadScaData(),
+                loadNativeData()
+            ]);
+            calculateExecutiveHealth();
+        }
+
+        // --- NATIVE SECURITY AUDIT LOGIC ---
+        async function loadNativeData() {
+            try {
+                const response = await fetch('/api/native?_t=' + Date.now());
+                const res = (await response.json()) || {};
+                nativeData = res.checks || [];
+                const timeEl = document.getElementById('native-scan-time');
+                if (timeEl) timeEl.innerText = res.timestamp || 'Pending scan...';
+                renderNativeMetrics();
+                renderNativeTable(nativeData);
+            } catch (e) {
+                console.error("Failed to load native security results:", e);
+                nativeData = [];
+            }
+        }
+
+        function renderNativeMetrics() {
+            const total = nativeData.length;
+            const passed = nativeData.filter(d => d.status === 'Passed').length;
+            const failed = nativeData.filter(d => d.status === 'Failed' || d.status === 'Warning').length;
+
+            document.getElementById('native-total-count').innerText = total;
+            document.getElementById('native-passed-count').innerText = passed;
+            document.getElementById('native-failed-count').innerText = failed;
+
+            const failedCard = document.getElementById('native-failed-card');
+            if (failed > 0) {
+                failedCard.style.borderLeft = '4px solid var(--color-failed)';
+            } else {
+                failedCard.style.borderLeft = '4px solid var(--color-passed)';
+            }
+        }
+
+        function renderNativeTable(data) {
+            const tbody = document.getElementById('nativeTableBody');
+            const noDataEl = document.getElementById('native-no-data');
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '';
+                noDataEl.style.display = 'block';
+                return;
+            } else {
+                noDataEl.style.display = 'none';
+            }
+
+            let html = '';
+            data.forEach(item => {
+                const badgeClass = (item.status || 'warning').toLowerCase();
+                const severityClass = (item.severity || 'low').toLowerCase();
+
+                html += `
+                    <tr>
+                        <td class="code-path">${escapeHtml(item.id)}</td>
+                        <td>
+                            <div style="font-weight: 600; color: #fff; margin-bottom: 0.25rem;">${escapeHtml(item.name)}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(item.description)}</div>
+                        </td>
+                        <td><span class="badge ${badgeClass}">${item.status}</span></td>
+                        <td><span class="badge ${severityClass}">${item.severity}</span></td>
+                        <td>
+                            <div style="margin-bottom: 0.35rem;"><strong>Observed:</strong> ${escapeHtml(item.observed)}</div>
+                            <div style="font-size: 0.85rem; color: #fb7185; margin-bottom: 0.35rem;">
+                                <strong>Action Required:</strong> ${item.status === 'Passed' ? '<span style="color: #34d399;">No action required. The configuration is secure.</span>' : escapeHtml(item.description)}
+                            </div>
+                            <div style="font-size: 0.8rem; color: #a5b4fc;"><strong>OWASP Category:</strong> ${escapeHtml(item.owasp)}</div>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        // --- PHPUNIT LOGIC ---
+        async function loadTestData() {
+            try {
+                const response = await fetch('/api/results?_t=' + Date.now());
+                const res = (await response.json()) || {};
+                testData = res.tests || [];
+                const timeEl = document.getElementById('test-scan-time');
+                if (timeEl) timeEl.innerText = res.timestamp || 'Pending scan...';
+                renderTestMetrics();
+                renderTestCharts();
+                renderTestTable(testData);
+            } catch (e) {
+                console.error("Failed to load PHPUnit results:", e);
+                testData = [];
+            }
+        }
+
+        function renderTestMetrics() {
+            const total = testData.length;
+            const passed = testData.filter(d => d.status === 'Passed').length;
+            const failed = testData.filter(d => d.status === 'Failed').length;
+            const totalTime = testData.reduce((acc, curr) => acc + curr.time, 0);
+            const avgTime = total > 0 ? (totalTime / total) : 0;
+
+            document.getElementById('test-total').innerText = total;
+            document.getElementById('test-passed').innerText = passed;
+            document.getElementById('test-failed').innerText = failed;
+            document.getElementById('test-duration').innerText = totalTime.toFixed(2) + 's';
+
+            const rate = total > 0 ? ((passed / total) * 100).toFixed(1) : 0;
+            document.getElementById('test-pass-pct').innerText = rate + '% Success Rate';
+            document.getElementById('test-avg-time').innerText = 'Avg: ' + avgTime.toFixed(3) + 's / test';
+        }
+
+        function renderTestCharts() {
+            if (typeof Chart === 'undefined') {
+                console.warn("Chart.js is not loaded yet or failed to load. Skipping chart rendering.");
+                return;
+            }
+
+            const passed = testData.filter(d => d.status === 'Passed').length;
+            const failed = testData.filter(d => d.status === 'Failed').length;
+            const skipped = testData.filter(d => d.status === 'Skipped').length;
+
+            if (passed === 0 && failed === 0 && skipped === 0) return;
+
+            const pieCtx = document.getElementById('testPieChart').getContext('2d');
+            if (testPieInstance) testPieInstance.destroy();
+            testPieInstance = new Chart(pieCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Passed', 'Failed', 'Skipped'].filter((_, i) => [passed, failed, skipped][i] > 0),
+                    datasets: [{
+                        data: [passed, failed, skipped].filter(v => v > 0),
+                        backgroundColor: ['#10b981', '#ef4444', '#f59e0b'].filter((_, i) => [passed, failed, skipped][i] > 0),
+                        borderColor: '#12131a',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#e5e7eb', font: { family: 'Outfit' } } }
+                    },
+                    cutout: '65%'
+                }
+            });
+
+            const slowest = [...testData].sort((a, b) => b.time - a.time).slice(0, 5);
+            const barCtx = document.getElementById('testBarChart').getContext('2d');
+            if (testBarInstance) testBarInstance.destroy();
+            testBarInstance = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: slowest.map(d => d.name.length > 25 ? d.name.substring(0, 25) + '...' : d.name),
+                    datasets: [{
+                        data: slowest.map(d => d.time),
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                        borderColor: '#3b82f6',
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af', font: { family: 'Outfit' } } },
+                        y: { grid: { display: false }, ticks: { color: '#e5e7eb', font: { family: 'Outfit' } } }
+                    }
+                }
+            });
+        }
+
+        function renderTestTable(data) {
+            const tbody = document.getElementById('testTableBody');
+            let html = '';
+            data.forEach(tc => {
+                let badgeClass = (tc.status || 'skipped').toLowerCase();
+                let detailRow = '';
+                if (tc.status === 'Failed' && tc.message) {
+                    detailRow = `<div class="error-log">${escapeHtml(tc.message)}</div>`;
+                }
+
+                // Get non-technical details
+                const friendly = getTestFriendlyDetails(tc.class, tc.name);
+
+                // Extract simple component name from php class
+                let moduleName = tc.class.split('\\\\').pop();
+                moduleName = moduleName.replace(/Test$/, '').replace(/([A-Z])/g, ' $1').trim();
+
+                html += `
+                    <tr>
+                        <td class="code-path">${escapeHtml(moduleName)}</td>
+                        <td style="font-weight: 500; color: #818cf8;">${escapeHtml(friendly.type)}</td>
+                        <td>
+                            <div style="font-weight: 600; color: #fff; margin-bottom: 0.25rem;">${escapeHtml((tc.name || '').replace(/^test_/, '').replace(/_/g, ' '))}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(friendly.target)}</div>
+                            ${detailRow}
+                        </td>
+                        <td><span class="badge ${badgeClass}">${tc.status}</span></td>
+                        <td class="duration-text">${tc.time.toFixed(4)}s</td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function filterTests() {
+            const query = (document.getElementById('testSearch').value || '').toLowerCase();
+            const filtered = testData.filter(d =>
+                (d.name && String(d.name).toLowerCase().includes(query)) ||
+                (d.class && String(d.class).toLowerCase().includes(query))
+            );
+            renderTestTable(filtered);
+        }
+
+        // --- LARASTAN LOGIC ---
+        async function loadLarastanData() {
+            try {
+                const response = await fetch('/api/larastan?_t=' + Date.now());
+                larastanData = (await response.json()) || { errors: [] };
+                const timeEl = document.getElementById('larastan-scan-time');
+                if (timeEl) timeEl.innerText = larastanData.timestamp || 'Pending scan...';
+
+                const wrapper = document.getElementById('larastan-table-wrapper');
+                const nodata = document.getElementById('larastan-no-data');
+
+                if (!larastanData || !larastanData.errors || Object.keys(larastanData).length === 0) {
+                    wrapper.style.display = 'none';
+                    nodata.style.display = 'block';
+                    document.getElementById('sast-errors').innerText = '0';
+                    document.getElementById('sast-status').innerText = 'N/A';
+                    document.getElementById('sast-status-card').className = 'metric-card';
+                    return;
+                }
+
+                wrapper.style.display = 'block';
+                nodata.style.display = 'none';
+
+                const errors = larastanData.errors || [];
+                document.getElementById('sast-errors').innerText = errors.length;
+
+                const statusEl = document.getElementById('sast-status');
+                const cardEl = document.getElementById('sast-status-card');
+                if (errors.length === 0) {
+                    statusEl.innerText = 'PASSED';
+                    statusEl.style.color = 'var(--color-passed)';
+                    cardEl.className = 'metric-card passed';
+                } else {
+                    statusEl.innerText = 'FAILING';
+                    statusEl.style.color = 'var(--color-failed)';
+                    cardEl.className = 'metric-card failed';
+                }
+
+                renderLarastanTable(errors);
+            } catch (e) {
+                console.error("Failed to load Larastan results:", e);
+            }
+        }
+
+        function renderLarastanTable(errors) {
+            const tbody = document.getElementById('larastanTableBody');
+            if (errors.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: var(--color-passed); padding: 2rem;">Clean scan! Larastan found zero issues in your codebase.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            errors.forEach(err => {
+                const trans = translateLarastanError(err.message);
+
+                html += `
+                    <tr>
+                        <td>
+                            <div class="code-path">${escapeHtml(err.file)}</div>
+                            <div class="line-num">Line ${err.line}</div>
+                        </td>
+                        <td>
+                            <div class="business-explanation">
+                                ${trans.impact}
+                            </div>
+                            <div class="technical-details">
+                                <button class="technical-toggle-btn" onclick="toggleTechBox(this)">Show Technical Code Error</button>
+                                <div class="technical-box">
+                                    <div class="error-log" style="margin-bottom: 0.5rem;">${escapeHtml(err.message)}</div>
+                                    <div style="font-size: 0.85rem; color: #fb7185; margin-top: 0.5rem;"><strong>Action Required:</strong> ${trans.remedy}</div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function toggleTechBox(btn) {
+            const box = btn.nextElementSibling;
+            if (box.style.display === 'block') {
+                box.style.display = 'none';
+                btn.innerText = 'Show Technical Code Error';
+            } else {
+                box.style.display = 'block';
+                btn.innerText = 'Hide Technical Code Error';
+            }
+        }
+
+        function filterLarastan() {
+            if (!larastanData || !larastanData.errors) return;
+            const query = document.getElementById('sastSearch').value.toLowerCase();
+            const filtered = larastanData.errors.filter(d =>
+                d.file.toLowerCase().includes(query) ||
+                d.message.toLowerCase().includes(query)
+            );
+            renderLarastanTable(filtered);
+        }
+
+        // --- ZAP LOGIC ---
+        async function loadZapData() {
+            try {
+                const response = await fetch('/api/zap?_t=' + Date.now());
+                const res = (await response.json()) || {};
+                zapData = res.alerts || [];
+                const timeEl = document.getElementById('zap-scan-time');
+                if (timeEl) timeEl.innerText = res.timestamp || 'Pending scan...';
+
+                const wrapper = document.getElementById('zap-table-wrapper');
+                const nodata = document.getElementById('zap-no-data');
+
+                if (!zapData || zapData.length === 0) {
+                    wrapper.style.display = 'none';
+                    nodata.style.display = 'block';
+                    document.getElementById('zap-total').innerText = '0';
+                    document.getElementById('zap-high').innerText = '0';
+                    document.getElementById('zap-medium').innerText = '0';
+                    document.getElementById('zap-low').innerText = '0';
+                    return;
+                }
+
+                wrapper.style.display = 'block';
+                nodata.style.display = 'none';
+
+                const total = zapData.length;
+                const high = zapData.filter(d => (d.risk || 'Low').toLowerCase() === 'high').length;
+                const medium = zapData.filter(d => (d.risk || 'Low').toLowerCase() === 'medium').length;
+                const lowOrInfo = total - high - medium;
+
+                document.getElementById('zap-total').innerText = total;
+                document.getElementById('zap-high').innerText = high;
+                document.getElementById('zap-medium').innerText = medium;
+                document.getElementById('zap-low').innerText = lowOrInfo;
+
+                renderZapTable(zapData);
+            } catch (e) {
+                console.error("Failed to load ZAP results:", e);
+            }
+        }
+
+        async function loadScaData() {
+            try {
+                const response = await fetch('/api/sca?_t=' + Date.now());
+                const res = (await response.json()) || {};
+                scaData = res;
+                const timeEl = document.getElementById('sca-scan-time');
+                if (timeEl) timeEl.innerText = res.timestamp || 'Pending scan...';
+
+                const composerCount = (scaData.composer || []).length;
+                const npmCount = (scaData.npm || []).length;
+                const totalCount = composerCount + npmCount;
+
+                document.getElementById('sca-composer-count').innerText = composerCount;
+                document.getElementById('sca-npm-count').innerText = npmCount;
+
+                const statusVal = document.getElementById('sca-status-value');
+                const cardEl = document.getElementById('sca-status-card');
+
+                if (totalCount === 0) {
+                    statusVal.innerText = 'SECURE';
+                    statusVal.style.color = 'var(--color-passed)';
+                    cardEl.className = 'metric-card passed';
+                } else {
+                    statusVal.innerText = `${totalCount} Vulns`;
+                    statusVal.style.color = 'var(--color-high)';
+                    cardEl.className = 'metric-card high-alert';
+                }
+
+                renderScaComposerTable(scaData.composer || []);
+                renderScaNpmTable(scaData.npm || []);
+            } catch (e) {
+                console.error("Failed to load SCA results:", e);
+            }
+        }
+
+        function renderScaComposerTable(vulns) {
+            const tbody = document.getElementById('scaComposerTableBody');
+            const nodata = document.getElementById('sca-composer-no-data');
+
+            if (vulns.length === 0) {
+                tbody.innerHTML = '';
+                nodata.style.display = 'block';
+                return;
+            }
+            nodata.style.display = 'none';
+
+            let html = '';
+            vulns.forEach(v => {
+                html += `
+                    <tr>
+                        <td style="font-weight: 600; color: #818cf8;">${escapeHtml(v.package)}</td>
+                        <td><span class="badge ${(v.severity || 'unknown').toLowerCase()}">${escapeHtml(v.severity || 'unknown')}</span></td>
+                        <td><code style="font-family: var(--font-mono); color: #fb923c;">${escapeHtml(v.cve)}</code></td>
+                        <td>
+                            <div style="font-size: 0.9rem; color: #d1d5db;">${escapeHtml(v.title)}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Affected versions: ${escapeHtml(v.affected)}</div>
+                        </td>
+                        <td>
+                            ${v.link ? `<a href="${escapeHtml(v.link)}" target="_blank" style="color: #818cf8; text-decoration: underline;">View</a>` : 'N/A'}
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function renderScaNpmTable(vulns) {
+            const tbody = document.getElementById('scaNpmTableBody');
+            const nodata = document.getElementById('sca-npm-no-data');
+
+            if (vulns.length === 0) {
+                tbody.innerHTML = '';
+                nodata.style.display = 'block';
+                return;
+            }
+            nodata.style.display = 'none';
+
+            let html = '';
+            vulns.forEach(v => {
+                html += `
+                    <tr>
+                        <td style="font-weight: 600; color: #818cf8;">${escapeHtml(v.package)}</td>
+                        <td><span class="badge ${(v.severity || 'unknown').toLowerCase()}">${escapeHtml(v.severity || 'unknown')}</span></td>
+                        <td><code style="font-family: var(--font-mono); color: #fb923c;">${escapeHtml(v.cve)}</code></td>
+                        <td>
+                            <div style="font-size: 0.9rem; color: #d1d5db;">${escapeHtml(v.title)}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Affected range: ${escapeHtml(v.affected)}</div>
+                        </td>
+                        <td>
+                            ${v.link ? `<a href="${escapeHtml(v.link)}" target="_blank" style="color: #818cf8; text-decoration: underline;">View</a>` : 'N/A'}
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function renderZapTable(alerts) {
+            const tbody = document.getElementById('zapTableBody');
+            let html = '';
+            alerts.forEach(alert => {
+                const badgeClass = (alert.risk || 'informational').toLowerCase();
+                const trans = translateZapAlert(alert.title);
+
+                let urlsList = '';
+                if (alert.urls && alert.urls.length > 0) {
+                    urlsList = `<div style="margin-top: 0.5rem; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary);">
+                        <strong>Impacted Web Pages/APIs:</strong>
+                        <ul style="list-style-type: none; margin-top: 0.25rem;">
+                            ${alert.urls.map(u => `<li>${escapeHtml(u)}</li>`).join('')}
+                        </ul>
+                    </div>`;
+                }
+
+                html += `
+                    <tr>
+                        <td><span class="badge ${badgeClass}">${alert.risk}</span></td>
+                        <td style="font-weight: 600;">${escapeHtml(alert.title)}</td>
+                        <td>
+                            <div class="business-explanation">
+                                ${trans.impact}
+                            </div>
+                            ${urlsList}
+                            <div class="technical-details">
+                                <button class="technical-toggle-btn" onclick="toggleTechBox(this)">Show Technical Details & Fix</button>
+                                <div class="technical-box">
+                                    <div class="description-box" style="margin-bottom: 0.5rem;">${escapeHtml(alert.description)}</div>
+                                    <div class="solution-box">
+                                        <strong>Action Required:</strong><br>
+                                        ${trans.remedy}<br><br>
+                                        <em>Technical Recommendation:</em> ${escapeHtml(alert.solution)}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function filterZap() {
+            const query = document.getElementById('zapSearch').value.toLowerCase();
+            const filtered = zapData.filter(d =>
+                d.title.toLowerCase().includes(query) ||
+                d.description.toLowerCase().includes(query) ||
+                d.risk.toLowerCase().includes(query)
+            );
+            renderZapTable(filtered);
+        }
+
+        // --- EXECUTIVE HEALTH SCORING ---
+        function calculateExecutiveHealth() {
+            let score = 100;
+            let summaryText = "";
+
+            // 1. PHPUnit Tests Contribution (max 40 pts)
+            let testSubScore = 40;
+            const testTotal = testData.length;
+            const testPassed = testData.filter(d => d.status === 'Passed').length;
+            const testFailed = testData.filter(d => d.status === 'Failed').length;
+            if (testTotal > 0) {
+                const passRate = testPassed / testTotal;
+                testSubScore = Math.round(passRate * 40);
+                if (testFailed > 0) {
+                    summaryText += `Your application has ${testFailed} failing unit test(s) which will break basic system features. `;
+                }
+            } else {
+                testSubScore = 0;
+                summaryText += "No functional PHPUnit tests were detected. ";
+            }
+
+            // 2. Larastan SAST Contribution (max 30 pts)
+            let sastSubScore = 30;
+            let sastReportExists = false;
+            let sastErrorsCount = 0;
+            if (larastanData && Object.keys(larastanData).length > 0) {
+                sastReportExists = true;
+                sastErrorsCount = (larastanData.errors || []).length;
+                sastSubScore = Math.max(0, 30 - (sastErrorsCount * 3)); // -3 pts per static error
+
+                const sastStatusEl = document.getElementById('summary-sast-status');
+                if (sastErrorsCount === 0) {
+                    sastStatusEl.innerText = "Excellent (0 issues)";
+                    sastStatusEl.style.color = "var(--color-passed)";
+                } else {
+                    sastStatusEl.innerText = `Needs Attention (${sastErrorsCount} errors)`;
+                    sastStatusEl.style.color = "var(--color-failed)";
+                }
+            } else {
+                sastSubScore = 15; // default middle points if report doesn't exist
+                document.getElementById('summary-sast-status').innerText = "Report Missing (Pending Scan)";
+                document.getElementById('summary-sast-status').style.color = "var(--text-secondary)";
+            }
+
+            // 3. OWASP ZAP DAST Contribution (max 30 pts)
+            let dastSubScore = 30;
+            let zapReportExists = false;
+            let zapHighCount = 0;
+            let zapMediumCount = 0;
+            let zapLowCount = 0;
+
+            if (zapData && zapData.length > 0) {
+                zapReportExists = true;
+                zapHighCount = zapData.filter(d => (d.risk || 'Low').toLowerCase() === 'high').length;
+                zapMediumCount = zapData.filter(d => (d.risk || 'Low').toLowerCase() === 'medium').length;
+                zapLowCount = zapData.filter(d => {
+                    const r = (d.risk || 'Low').toLowerCase();
+                    return r === 'low' || r === 'warning';
+                }).length;
+
+                // Penalties: -15 per High, -5 per Medium, -1 per Low
+                dastSubScore = Math.max(0, 30 - (zapHighCount * 15) - (zapMediumCount * 5) - (zapLowCount * 1));
+
+                const dastStatusEl = document.getElementById('summary-dast-status');
+                if (zapHighCount > 0) {
+                    dastStatusEl.innerText = `Critical Risk (${zapHighCount} High Alerts)`;
+                    dastStatusEl.style.color = "var(--color-high)";
+                } else if (zapMediumCount > 0) {
+                    dastStatusEl.innerText = `Warning (${zapMediumCount} Medium Alerts)`;
+                    dastStatusEl.style.color = "var(--color-medium)";
+                } else {
+                    dastStatusEl.innerText = `Good (${zapLowCount} Low Alerts)`;
+                    dastStatusEl.style.color = "var(--color-low)";
+                }
+            } else {
+                dastSubScore = 15; // default middle
+                document.getElementById('summary-dast-status').innerText = "Report Missing (Pending Scan)";
+                document.getElementById('summary-dast-status').style.color = "var(--text-secondary)";
+            }
+
+            // 4. Native Boundary Audit (deducts from overall score if they fail)
+            let nativeFailed = nativeData.filter(d => d.status === 'Failed').length;
+            let nativeWarnings = nativeData.filter(d => d.status === 'Warning').length;
+
+            const nativeStatusEl = document.getElementById('summary-native-status');
+            if (nativeData.length > 0) {
+                if (nativeFailed > 0) {
+                    nativeStatusEl.innerText = `At Risk (${nativeFailed} Failures)`;
+                    nativeStatusEl.style.color = "var(--color-failed)";
+                    summaryText += `Boundary audit detected ${nativeFailed} configuration failure(s). `;
+                } else if (nativeWarnings > 0) {
+                    nativeStatusEl.innerText = `Warning (${nativeWarnings} Warnings)`;
+                    nativeStatusEl.style.color = "var(--color-skipped)";
+                } else {
+                    nativeStatusEl.innerText = "Passed (Secure)";
+                    nativeStatusEl.style.color = "var(--color-passed)";
+                }
+            } else {
+                nativeStatusEl.innerText = "No Scan";
+                nativeStatusEl.style.color = "var(--text-secondary)";
+            }
+
+            score = testSubScore + sastSubScore + dastSubScore;
+            score = Math.max(0, score - (nativeFailed * 5) - (nativeWarnings * 2));
+
+            // Health description writing
+            if (score >= 90) {
+                summaryText = "The application health is Excellent. All functional test verification passes successfully, code formatting follows security practices, and there are no severe configuration issues. The prototype is safe for stakeholder demonstration.";
+                document.getElementById('health-status-badge').innerText = "EXCELLENT HEALTH";
+                document.getElementById('health-status-badge').className = "health-badge excellent";
+            } else if (score >= 70) {
+                summaryText = "The application health is Stable but Needs Attention. Basic operations function correctly, but we found code standard warnings or minor configuration vulnerabilities (like missing web security headers). Resolving these will secure user sessions and prevent page hijackings.";
+                document.getElementById('health-status-badge').innerText = "STABLE / WARN";
+                document.getElementById('health-status-badge').className = "health-badge good";
+            } else {
+                summaryText = "The application is currently At Risk. We detected active test failures, structural code errors, or significant vulnerability alerts (such as CORS exposure or clickjacking risks). Developers should focus on patching these items before exposing the portal to public traffic.";
+                document.getElementById('health-status-badge').innerText = "CRITICAL RISK";
+                document.getElementById('health-status-badge').className = "health-badge poor";
+            }
+
+            // Supply Chain Security Info
+            const composerCount = (scaData.composer || []).length;
+            const npmCount = (scaData.npm || []).length;
+            const totalScaCount = composerCount + npmCount;
+            if (totalScaCount > 0) {
+                summaryText += ` Warning: We detected ${totalScaCount} package dependency vulnerabilities in your Software Supply Chain (SCA). Outdated third-party libraries represent an exposure surface. `;
+            }
+
+            // Append report generation reminders
+            let missingReports = [];
+            if (!sastReportExists) missingReports.push("Larastan (SAST)");
+            if (!zapReportExists) missingReports.push("OWASP ZAP (DAST)");
+            if (missingReports.length > 0) {
+                summaryText += ` Note: To compute a more accurate security health score, please generate and load the reports for ${missingReports.join(" and ")}.`;
+            }
+
+            document.getElementById('executive-summary-text').innerHTML = summaryText;
+
+            // Animate Score circle ring
+            document.getElementById('health-score-val').innerText = score;
+            const circleRadius = 40;
+            const circumference = 2 * Math.PI * circleRadius; // ~251.2
+            const ringEl = document.getElementById('health-ring');
+            const offset = circumference - (score / 100) * circumference;
+            ringEl.style.strokeDashoffset = offset;
+
+            // Adjust ring color dynamically
+            if (score >= 90) ringEl.style.stroke = "var(--color-passed)";
+            else if (score >= 70) ringEl.style.stroke = "var(--color-skipped)";
+            else ringEl.style.stroke = "var(--color-failed)";
+        }
+
+        // Utils
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Status Polling & Spider Animation Controller
+        let pollInterval = null;
+        let lastStatusMap = {};
+
+        async function pollScanStatus() {
+            try {
+                const response = await fetch('/api/status?_t=' + Date.now());
+                const statusMap = await response.json();
+
+                let anyActive = false;
+                let keys = Object.keys(statusMap);
+                let statusChanged = false;
+
+                keys.forEach(key => {
+                    const badge = document.getElementById('scan-status-' + key);
+                    if (badge) {
+                        const currentStatus = statusMap[key];
+                        badge.innerText = currentStatus;
+                        badge.className = 'scan-badge ' + currentStatus;
+
+                        if (currentStatus === 'running' || currentStatus === 'pending') {
+                            anyActive = true;
+                        }
+
+                        const prevStatus = lastStatusMap[key];
+                        // Detect transition from pending/running to a finished state
+                        if ((prevStatus === 'running' || prevStatus === 'pending') &&
+                            (currentStatus === 'completed' || currentStatus === 'failed' || currentStatus === 'skipped')) {
+                            statusChanged = true;
+                        }
+                        // Also detect when we first see a finished state (prevStatus was undefined/not set yet)
+                        if (prevStatus === undefined &&
+                            (currentStatus === 'completed' || currentStatus === 'failed' || currentStatus === 'skipped')) {
+                            statusChanged = true;
+                        }
+
+                        lastStatusMap[key] = currentStatus;
+                    }
+                });
+
+                const viewport = document.getElementById('spider-viewport');
+                const label = document.getElementById('spider-state-label');
+                const globalStatus = document.getElementById('scan-global-status');
+
+                if (anyActive) {
+                    viewport.classList.add('scanning');
+                    label.innerText = 'Spider is crawling boundaries...';
+                    globalStatus.innerText = 'Scans are actively executing';
+                } else {
+                    viewport.classList.remove('scanning');
+                    label.innerText = 'Scan Complete. Spider is resting.';
+                    globalStatus.innerText = 'All verification scans completed';
+
+                    // Stop polling once everything is done
+                    if (pollInterval) {
+                        clearInterval(pollInterval);
+                        pollInterval = null;
+                    }
+                }
+
+                // Dynamically reload all tables and health metrics if a scan just completed
+                if (statusChanged || !anyActive) {
+                    loadAllData();
+                }
+            } catch (e) {
+                console.error("Error polling scan status:", e);
+            }
+        }
+
+        function startPolling() {
+            pollInterval = setInterval(pollScanStatus, 1500);
+            pollScanStatus();
+        }
+
+        // Initialize
+        function init() {
+            loadAllData();
+            startPolling();
+        }
+
+        // Run initialization immediately since elements are already parsed
+        init();
+
+        // Listen for Chart.js to load to dynamically render charts
+        const chartLib = document.getElementById('chart-js-lib');
+        if (chartLib && typeof chartLib.addEventListener === 'function') {
+            chartLib.addEventListener('load', function() {
+                if (testData && testData.length > 0) {
+                    renderTestCharts();
+                }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -34,14 +34,16 @@ php artisan migrate
 php artisan rikms:provision-demo
 npm ci
 npm run build
-php -d upload_max_filesize=25M -d post_max_size=27M artisan serve --host=127.0.0.1 --port=8000
+composer run dev
 ```
 
 Windows developers should use the checked-in PowerShell setup and runbook: `powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup-local.ps1`, then follow [Windows development](docs/WINDOWS_DEVELOPMENT.md). The application, queue, and security scanner are cross-platform; Google Cloud provisioning remains a Bash/Cloud Shell or WSL operation.
 
-`rikms:provision-demo` is an explicit, local-only step that creates or resets two demonstration accounts: `test@example.com` / `password` for the agency workspace and `admin@rikms.gov.ph` / `password` for system administration. The command refuses to run outside the `local` or `testing` environment. It does not create synthetic research papers. Production setup never creates fixed demo credentials. Automated tests retain isolated in-memory fixtures. For active frontend development, run `npm run dev` in a second terminal.
+`composer run dev` starts Laravel on `http://127.0.0.1:8000`, the `default,ai` queue worker, application logs, and Vite from the same checkout. `npm run dev:rikms` is an equivalent convenience alias. Plain `npm run dev` starts only Vite; port `5173` is an asset/HMR server and is not the RIKMS website.
 
-Keep a queue worker running for mail and digest delivery, and run the Laravel scheduler every minute:
+`rikms:provision-demo` is an explicit, local-only step that creates or resets two demonstration accounts: `test@example.com` / `password` for the agency workspace and `admin@rikms.gov.ph` / `password` for system administration. The command refuses to run outside the `local` or `testing` environment. It does not create synthetic research papers. Production setup never creates fixed demo credentials. Automated tests retain isolated in-memory fixtures.
+
+When running processes separately instead of `composer run dev`, keep a queue worker running for mail, document processing, AI analysis, and digest delivery. Run the Laravel scheduler every minute:
 
 ```bash
 php artisan queue:work --queue=default,ai --tries=3

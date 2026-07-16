@@ -245,16 +245,27 @@ def main() -> int:
     filename = f"native-{timestamp.strftime('%Y%m%dT%H%M%SZ')}.json"
     try:
         origin = TargetPolicy.from_environment().authorize(args.target, args.mode)
+    except SafetyError as error:
+        print(f"Security scan blocked by target policy: {error}", file=sys.stderr)
+        return 2
+    try:
         output = private_output_path(args.output, filename, PROJECT_ROOT)
+    except OSError as error:
+        print(f"Security scan could not create private evidence storage: {error}", file=sys.stderr)
+        return 4
+    try:
         client = ScanClient(origin, args.timeout)
         findings, checks = passive_checks(client, args.environment)
         if args.mode == "active":
             active_findings, active_checks = active_authenticated_checks(client)
             findings.extend(active_findings)
             checks.extend(active_checks)
-    except (SafetyError, OSError, urllib.error.URLError) as error:
-        print(f"Security scan refused or failed safely: {error}", file=sys.stderr)
+    except SafetyError as error:
+        print(f"Security scan blocked by application boundary policy: {error}", file=sys.stderr)
         return 2
+    except (OSError, urllib.error.URLError) as error:
+        print(f"Security target is unavailable: {error}", file=sys.stderr)
+        return 3
 
     counts = {severity: 0 for severity in ["critical", "high", "medium", "low", "info"]}
     for item in findings:
@@ -274,7 +285,7 @@ def main() -> int:
         write_report(output, report)
     except OSError as error:
         print(f"Security report could not be written safely: {error}", file=sys.stderr)
-        return 2
+        return 4
     print(f"Security report written privately to {output}")
     return 1 if counts["critical"] or counts["high"] else 0
 

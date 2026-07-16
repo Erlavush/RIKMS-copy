@@ -30,6 +30,11 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="RIKMS_DOCUMENT_PROCESSING_AUTO_QUEUE" value="false"/>
+        <env name="RIKMS_AI_ENABLED" value="false"/>
+        <env name="RIKMS_AI_PROVIDER" value="vertex"/>
+        <env name="LOCAL_PDF_TEXT_COMMAND" value=""/>
+        <env name="LOCAL_PDF_RENDER_COMMAND" value=""/>
+        <env name="LOCAL_OCR_COMMAND" value=""/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="SESSION_COOKIE" value="rikms-session"/>
         <env name="TRUSTED_PROXIES" value="*"/>

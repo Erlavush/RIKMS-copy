@@ -6,6 +6,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
+        "dev:rikms": "composer run dev",
         "typecheck": "tsc --noEmit",
         "lint": "eslint resources/js vite.config.js vitest.config.ts",
         "format": "prettier --write resources/js vite.config.js vitest.config.ts eslint.config.js",
@@ -16,6 +17,8 @@
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
+        "@fontsource/jetbrains-mono": "^5.2.8",
+        "@fontsource/outfit": "^5.2.8",
         "@tailwindcss/vite": "^4.0.0",
         "@testing-library/jest-dom": "^6.9.1",
         "@testing-library/react": "^16.3.2",
@@ -24,6 +27,7 @@
         "@types/react": "^19.2.17",
         "@types/react-dom": "^19.2.3",
         "@vitejs/plugin-react": "^4.7.0",
+        "chart.js": "^4.5.1",
         "concurrently": "^10.0.3",
         "eslint": "^10.7.0",
         "eslint-plugin-react-hooks": "^7.1.1",

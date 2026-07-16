@@ -739,8 +739,8 @@ function StepUploadResearch({
                 <Brain className="w-4 h-4 text-[#7C3AED] mt-0.5 shrink-0" />
                 <p className="text-xs text-purple-800">
                     <span className="font-semibold">Human-reviewed metadata</span> — Complete the initial
-                    fields here. After the PDF is securely stored, Gemini runs separately and never publishes
-                    or approves content.
+                    fields here. After the PDF is securely stored, AI runs separately and never publishes or
+                    approves content.
                 </p>
             </div>
         </div>
@@ -986,7 +986,7 @@ function StepAiMetadata({
                 step={stepNum}
                 total={total}
                 accentColor="#7C3AED"
-                subtitle="Prepare the initial editable fields. Gemini suggestions become available after the draft and source PDF are securely stored."
+                subtitle="Prepare the initial editable fields. AI suggestions become available after the draft and source PDF are securely stored."
             />
 
             {!analyzing && !ready && (
@@ -1002,8 +1002,8 @@ function StepAiMetadata({
                     <div className="text-center max-w-sm">
                         <p className="text-gray-800 font-semibold mb-1">Prepare an Editable Metadata Draft</p>
                         <p className="text-sm text-gray-500">
-                            Continue to an editable metadata draft. Real Gemini analysis runs after the source
-                            PDF is stored and remains subject to human review.
+                            Continue to an editable metadata draft. Real AI analysis runs after the source PDF
+                            is stored and remains subject to human review.
                         </p>
                     </div>
                     <button
@@ -1060,8 +1060,8 @@ function StepAiMetadata({
                         <div className="flex-1">
                             <p className="text-sm text-green-700 font-semibold">Metadata draft prepared</p>
                             <p className="text-xs text-green-600">
-                                These fields are human-controlled. Review the separate Gemini suggestions
-                                after saving the draft and before submission.
+                                These fields are human-controlled. Review the separate AI suggestions after
+                                saving the draft and before submission.
                             </p>
                         </div>
                         <button
@@ -3705,8 +3705,8 @@ export function UploadResearch() {
     }
 
     const subtitle = isResearch
-        ? "Submit research articles with review-gated Gemini metadata assistance"
-        : "Submit structured reports with review-gated Gemini metadata assistance";
+        ? "Submit research articles with review-gated AI metadata assistance"
+        : "Submit structured reports with review-gated AI metadata assistance";
 
     return (
         <div className="space-y-5">

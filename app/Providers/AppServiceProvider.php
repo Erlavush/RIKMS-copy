@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use App\Contracts\DocumentAnalysisProvider;
 use App\Events\DocumentSourceStored;
 use App\Jobs\ProcessDocumentJob;
+use App\Services\OllamaDocumentAnalysisService;
+use App\Services\VertexDocumentAnalysisService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -12,6 +15,7 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Laravel\Fortify\Fortify;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -23,6 +27,22 @@ class AppServiceProvider extends ServiceProvider
         // RIKMS owns its authentication routes and uses only Fortify's vetted
         // TOTP provider, recovery-code primitives, and model trait.
         Fortify::ignoreRoutes();
+
+        $this->app->bind(DocumentAnalysisProvider::class, function ($app) {
+            $provider = (string) config('rikms.ai.provider');
+            if ($provider === 'ollama') {
+                if (! $app->environment(['local', 'testing'])) {
+                    throw new RuntimeException('The Ollama provider is restricted to local development and testing.');
+                }
+
+                return $app->make(OllamaDocumentAnalysisService::class);
+            }
+            if ($provider !== 'vertex') {
+                throw new RuntimeException('Unsupported RIKMS AI provider: '.$provider);
+            }
+
+            return $app->make(VertexDocumentAnalysisService::class);
+        });
     }
 
     /**

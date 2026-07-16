@@ -119,6 +119,11 @@ export function ResearchMetadata() {
     const [aiBusy, setAiBusy] = useState(false);
     const [appliedAnalysisId, setAppliedAnalysisId] = useState<number | null>(null);
     const [acceptedAiFields, setAcceptedAiFields] = useState<string[]>([]);
+    const currentAnalysis = aiAnalysis.data?.data;
+    const queuedForLongerThanFifteenSeconds =
+        currentAnalysis?.status === "queued" &&
+        Boolean(currentAnalysis.createdAt) &&
+        Date.now() - Date.parse(currentAnalysis.createdAt) >= 15_000;
 
     useEffect(() => {
         const document = detail.data?.data;
@@ -218,7 +223,7 @@ export function ResearchMetadata() {
             "category",
             ...(suggestedSdgs.length ? ["suggested_sdgs"] : []),
         ]);
-        toast.success("Gemini filled the editable metadata draft. Review it before saving.");
+        toast.success("AI suggestions filled the editable metadata draft. Review them before saving.");
     }, [aiAnalysis.data?.data, autoApplyAi, detail.data?.data.id, initializedId]);
 
     function update<K extends keyof MetadataForm>(key: K, value: MetadataForm[K]) {
@@ -269,7 +274,7 @@ export function ResearchMetadata() {
         setSaveError("");
         try {
             await apiPost(`/api/rikms/agency/documents/${id}/ai-analysis`);
-            toast.success("Gemini document analysis queued.");
+            toast.success("Document analysis queued.");
             await aiAnalysis.refresh();
         } catch (error) {
             const message = firstValidationError(error);
@@ -455,7 +460,7 @@ export function ResearchMetadata() {
                     </div>
                     <p className="mt-1 text-sm text-gray-500">
                         {fromUpload
-                            ? "Gemini is extracting suggestions into this editable draft. Review before saving."
+                            ? "AI is extracting suggestions into this editable draft. Review before saving."
                             : "Edit structured metadata, public visibility, and SDG classification."}
                     </p>
                 </div>
@@ -531,10 +536,10 @@ export function ResearchMetadata() {
                             <Brain className="h-5 w-5" />
                         </span>
                         <div>
-                            <h2 className="font-semibold text-[#1E3A8A]">Gemini metadata assistance</h2>
+                            <h2 className="font-semibold text-[#1E3A8A]">AI metadata assistance</h2>
                             <p className="mt-1 text-xs text-gray-500">
-                                Gemini 3.1 Flash-Lite produces reviewable suggestions. It cannot publish,
-                                submit, or change access permissions.
+                                The configured model produces reviewable suggestions. It cannot publish,
+                                submit, or change access permissions. The active model appears below.
                             </p>
                         </div>
                     </div>
@@ -579,9 +584,21 @@ export function ResearchMetadata() {
                                 </span>
                             )}
                         </div>
-                        {(aiAnalysis.data.data.status === "queued" ||
-                            aiAnalysis.data.data.status === "processing") && (
-                            <p className="mt-2 text-purple-800">Processing safely in the background…</p>
+                        {aiAnalysis.data.data.status === "queued" && !queuedForLongerThanFifteenSeconds && (
+                            <p className="mt-2 text-purple-800">Waiting for the background queue worker…</p>
+                        )}
+                        {aiAnalysis.data.data.status === "queued" && queuedForLongerThanFifteenSeconds && (
+                            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                                Still queued. Local development requires the queue worker and configured model
+                                service. Start the complete stack with <code>composer run dev</code> or{" "}
+                                <code>npm run dev:rikms</code>, then confirm Ollama is running. Port 5173 is
+                                only Vite; open RIKMS on port 8000.
+                            </p>
+                        )}
+                        {aiAnalysis.data.data.status === "processing" && (
+                            <p className="mt-2 text-purple-800">
+                                The background worker is processing the PDF…
+                            </p>
                         )}
                         {aiAnalysis.data.data.status === "failed" && (
                             <p className="mt-2 text-red-700">{aiAnalysis.data.data.errorMessage}</p>

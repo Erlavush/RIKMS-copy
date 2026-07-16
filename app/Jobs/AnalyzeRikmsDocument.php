@@ -2,9 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Contracts\DocumentAnalysisProvider;
 use App\Models\DocumentAiAnalysis;
 use App\Services\DocumentAiAnalysisService;
-use App\Services\VertexDocumentAnalysisService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -34,7 +34,7 @@ class AnalyzeRikmsDocument implements ShouldQueue
         return [15, 60, 180];
     }
 
-    public function handle(VertexDocumentAnalysisService $vertex, DocumentAiAnalysisService $gate): void
+    public function handle(DocumentAnalysisProvider $provider, DocumentAiAnalysisService $gate): void
     {
         $analysis = DocumentAiAnalysis::query()->with('document')->findOrFail($this->analysisId);
         if (in_array($analysis->status, ['completed', 'reviewed'], true)) {
@@ -49,7 +49,7 @@ class AnalyzeRikmsDocument implements ShouldQueue
                 'error_code' => null,
                 'error_message' => null,
             ]);
-            $result = $vertex->analyze($analysis->document);
+            $result = $provider->analyze($analysis->document);
             $gate->assertReadyForAnalysis($analysis);
             $suggestions = $result['suggestions'];
             $analysis->update([
