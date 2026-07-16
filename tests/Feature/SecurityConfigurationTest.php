@@ -56,6 +56,12 @@ class SecurityConfigurationTest extends TestCase
         $this->assertStringContainsString('environment: security-staging', $workflow);
         $this->assertStringContainsString('--if-generation-match=0', $workflow);
         $this->assertStringContainsString('--role=roles/storage.objectCreator', $configuration);
+
+        $uploadDestination = strpos($workflow, 'GCP_SECURITY_REPORTS_BUCKET }}/incoming/staging/');
+        $createOnlyPrecondition = strpos($workflow, '--if-generation-match=0');
+        $this->assertIsInt($uploadDestination);
+        $this->assertIsInt($createOnlyPrecondition);
+        $this->assertGreaterThan($uploadDestination, $createOnlyPrecondition);
     }
 
     public function test_mixed_revision_canary_uses_a_backward_compatible_health_probe(): void
