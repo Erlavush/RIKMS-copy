@@ -1,0 +1,11 @@
+[
+    {
+        "id": "SEC-000",
+        "name": "Target Connectivity Check",
+        "description": "Target must be accessible over the network.",
+        "status": "Failed",
+        "severity": "High",
+        "observed": "Connection error: <urlopen error timed out>",
+        "owasp": "A05:2021-Security Misconfiguration"
+    }
+]

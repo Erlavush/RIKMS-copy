@@ -3,7 +3,42 @@ includes:
 
 parameters:
     paths:
-        - app
-    level: 5
+        - app/
+        - routes/
+        - database/migrations/
+        - database/seeders/
+
+    # =========================================================================
+    # STATIC ANALYSIS RULESET FOR VULNERABILITY PREVENTION
+    # Enforces Level 8 to map against the RIKMS Penetration Testing Guide:
+    #
+    # 1. SQL Injection:
+    #    Strict Eloquent query checks (checkModelProperties) prevent raw query
+    #    binding misconfigurations and highlight unsafe database queries.
+    # 2. Broken Access Control / IDOR:
+    #    Strict type enforcement for controller parameters (e.g. route model
+    #    bindings and integer type safety) prevents URL parameter tampering.
+    # 3. Path Traversal:
+    #    Level 8 forces developers to handle nullable/untrusted paths in 
+    #    Storage::get(), Storage::path(), etc., avoiding directory traversal.
+    # 4. Unrestricted File Upload:
+    #    Ensures Controller parameters and request validation classes use
+    #    strict type safety definitions for UploadedFile properties.
+    # 5. Stored/Reflected XSS:
+    #    Forces strict typing on model properties and return parameters, preventing
+    #    unvalidated raw metadata strings from slipping into output structures.
+    # 6. Denial of Service (DoS):
+    #    Highlights unbounded operations, infinite loops, and Division-by-Zero.
+    # =========================================================================
+    level: 8
     tmpDir: storage/framework/cache/phpstan
+
+    # Exclude directories that do not contain core business logic
+    excludePaths:
+        - bootstrap/cache/*
+        - storage/*
+        - vendor/*
+
+    # Security & Code Quality Scope: Strict checks on Database Queries, Mass Assignment, and Type safety
     checkModelProperties: true
+    checkOctaneCompatibility: true

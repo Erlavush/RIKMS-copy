@@ -150,7 +150,10 @@ class AiAndTestCohortTest extends TestCase
         }
 
         try {
-            $this->artisan("rikms:provision-test-cohort {$manifest} --disable-demo")->assertSuccessful();
+            $this->artisan('rikms:provision-test-cohort', [
+                'manifest' => $manifest,
+                '--disable-demo' => true,
+            ])->assertSuccessful();
         } finally {
             @unlink($manifest);
             putenv('RIKMS_TEST_PASSWORD_ADMIN');

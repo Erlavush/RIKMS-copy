@@ -478,8 +478,9 @@ class ReleaseReadinessTest extends TestCase
             'session.secure' => true,
             'session.http_only' => true,
             'session.same_site' => 'lax',
-            'session.cookie' => 'rikms_session',
+            'session.cookie' => 'rikms-session',
         ]);
+        $this->app->forgetInstance('session');
         [, $user] = $this->agencyAccount('cookie');
         $cookieHeader = implode('; ', $this->postJson('/login', [
             'email' => $user->email,

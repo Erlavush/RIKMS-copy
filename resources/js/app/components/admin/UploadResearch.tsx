@@ -49,6 +49,7 @@ import { apiPost, firstValidationError, type AgencySettingsData } from "../../li
 import { useApi } from "../../hooks/useApi";
 import { useAgencyContext } from "../../hooks/useAgencyContext";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
+import { postFormData, postJson } from "../../lib/http";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -3289,6 +3290,7 @@ export function UploadResearch() {
     const [isDragOver, setIsDragOver] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProg, setUploadProg] = useState(0);
+    const [documentId, setDocumentId] = useState<number | null>(null);
 
     // ── Research Step 2
     const [titleOverride, setTitleOverride] = useState("");
@@ -3391,6 +3393,71 @@ export function UploadResearch() {
         }));
     };
 
+    const runAiAnalysis = async () => {
+        if (!documentId) {
+            setSaveError("No document file has been uploaded yet.");
+            return;
+        }
+
+        setMetaAnalyzing(true);
+        setMetaReady(false);
+        setMetaProgress(0);
+        setMetaStage(0);
+        setSaveError("");
+
+        let backendResult: MetadataFields | null = null;
+        let backendError: string | null = null;
+        let suggestedSdgs: Array<{ sdg: number; confidence: number; reason: string }> = [];
+
+        const apiPromise = postJson<any>(`/api/rikms/documents/${documentId}/analyze`, {})
+            .then((res) => {
+                backendResult = {
+                    title: res.title || "",
+                    abstract: res.abstract || "",
+                    methodology: res.methodology || "",
+                    relatedLiterature: res.review_of_related_literature || "",
+                    theoreticalFramework: res.theoretical_framework || "",
+                    resultsDiscussion: res.results_and_discussion || "",
+                    keywords: (res.keywords || []).join(", "),
+                    authors: (res.authors || []).join(", "),
+                };
+                suggestedSdgs = res.suggested_sdgs || [];
+                if (suggestedSdgs.length > 0) {
+                    setSelectedSdgs(suggestedSdgs.map((s) => s.sdg));
+                }
+            })
+            .catch((err) => {
+                backendError = err instanceof Error ? err.message : "AI extraction failed.";
+            });
+
+        let prog = 0;
+        const iv = setInterval(() => {
+            prog += Math.random() * 10 + 4;
+            if (prog >= 90 && !backendResult && !backendError) {
+                prog = 90;
+            }
+            const stageIdx = Math.min(AI_STAGES.length - 1, Math.floor((prog / 100) * AI_STAGES.length));
+            setMetaProgress(Math.min(100, Math.round(prog)));
+            setMetaStage(stageIdx);
+
+            if (prog >= 100 || (prog >= 90 && (backendResult || backendError))) {
+                clearInterval(iv);
+                setMetaProgress(100);
+                setMetaStage(AI_STAGES.length - 1);
+                setTimeout(() => {
+                    setMetaAnalyzing(false);
+                    if (backendError) {
+                        setSaveError(backendError);
+                    } else if (backendResult) {
+                        setMetaReady(true);
+                        setMetadata(backendResult);
+                        setPublicFields(["title", "abstract", "methodology", "resultsDiscussion"]);
+                    }
+                }, 500);
+            }
+        }, 180);
+    };
+
     // ── Derived report values
     const alloc = typeof allocBudget === "number" ? allocBudget : 0;
     const used = typeof usedBudget === "number" ? usedBudget : 0;
@@ -3490,7 +3557,7 @@ export function UploadResearch() {
         return false;
     };
 
-    const handleFileSelected = (selected: File) => {
+    const handleFileSelected = async (selected: File) => {
         const extensionAllowed = /\.pdf$/i.test(selected.name);
         if (!extensionAllowed) {
             setSaveError("Choose a PDF file.");
@@ -3500,11 +3567,44 @@ export function UploadResearch() {
             setSaveError("The document must not exceed 25 MB.");
             return;
         }
+        if (!docType) return;
         setSaveError("");
         setFile(selected);
-        setIsUploading(false);
-        setUploadProg(100);
-        setMetaReady(false);
+        setIsUploading(true);
+        setUploadProg(0);
+        setDocumentId(null);
+
+        const formData = new FormData();
+        formData.append("document_type", docType);
+        formData.append("document_file", selected);
+
+        let simulatedProg = 0;
+        const iv = setInterval(() => {
+            simulatedProg += Math.random() * 12 + 6;
+            if (simulatedProg >= 90) {
+                simulatedProg = 90;
+            }
+            setUploadProg(simulatedProg);
+        }, 150);
+
+        try {
+            const res = await postFormData<{ document_id: number; original_filename: string; file_size: number }>(
+                "/api/rikms/documents/upload-draft",
+                formData
+            );
+
+            clearInterval(iv);
+            setUploadProg(100);
+            setDocumentId(res.document_id);
+            setIsUploading(false);
+            setMetaReady(false);
+        } catch (err) {
+            clearInterval(iv);
+            setIsUploading(false);
+            setFile(null);
+            setUploadProg(0);
+            setSaveError(err instanceof Error ? err.message : "File upload failed.");
+        }
     };
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
@@ -3568,6 +3668,7 @@ export function UploadResearch() {
         setSubmitMode(null);
         setSaveError("");
         setIsSaving(false);
+        setDocumentId(null);
     };
 
     const appendJson = (payload: FormData, key: string, value: unknown) => {
@@ -3614,7 +3715,11 @@ export function UploadResearch() {
             }
         }
 
-        if (file) payload.append("document_file", file);
+        if (documentId) {
+            payload.append("document_id", documentId.toString());
+        } else {
+            if (file) payload.append("document_file", file);
+        }
         if (isReport && hlFile) payload.append("highlight_file", hlFile);
 
         try {
@@ -3778,6 +3883,7 @@ export function UploadResearch() {
                                     setFile(null);
                                     setUploadProg(0);
                                     setIsUploading(false);
+                                    setDocumentId(null);
                                 }}
                                 setTitleOverride={setTitleOverride}
                             />
@@ -3793,7 +3899,7 @@ export function UploadResearch() {
                                 publicFields={publicFields}
                                 expandedMeta={expandedMeta}
                                 setExpandedMeta={setExpandedMeta}
-                                onRunAnalysis={prepareMetadataDraft}
+                                onRunAnalysis={runAiAnalysis}
                                 onUpdateMeta={updateMeta}
                                 onTogglePublic={togglePublic}
                                 onSelectAll={() =>
@@ -3874,6 +3980,7 @@ export function UploadResearch() {
                                     setFile(null);
                                     setUploadProg(0);
                                     setIsUploading(false);
+                                    setDocumentId(null);
                                 }}
                                 setTitle={setTitle2}
                                 setDescription={setDesc2}
@@ -3892,7 +3999,7 @@ export function UploadResearch() {
                                 publicFields={publicFields}
                                 expandedMeta={expandedMeta}
                                 setExpandedMeta={setExpandedMeta}
-                                onRunAnalysis={prepareMetadataDraft}
+                                onRunAnalysis={runAiAnalysis}
                                 onUpdateMeta={updateMeta}
                                 onTogglePublic={togglePublic}
                                 onSelectAll={() =>

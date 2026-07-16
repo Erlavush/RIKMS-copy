@@ -7,6 +7,7 @@
     <meta name="description" content="Regional Innovation and Knowledge Management System research repository">
     <meta name="theme-color" content="#1E3A8A">
     <title>{{ config('app.name', 'RIKMS') }}</title>
+    @viteReactRefresh
     @vite('resources/js/main.tsx')
 </head>
 <body>

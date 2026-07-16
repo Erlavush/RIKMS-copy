@@ -102,6 +102,12 @@ class Document extends Model
         'rejection_reason',
         'pre_archive_status',
         'archived_at',
+        'hash',
+        'malware_status',
+        'integrity_status',
+        'processing_status',
+        'extracted_text',
+        'processing_error',
     ];
 
     protected function casts(): array
@@ -177,6 +183,11 @@ class Document extends Model
     public function highlights(): HasMany
     {
         return $this->hasMany(Highlight::class);
+    }
+
+    public function chunks(): HasMany
+    {
+        return $this->hasMany(DocumentChunk::class);
     }
 
     public function versions(): HasMany

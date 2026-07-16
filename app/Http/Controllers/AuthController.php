@@ -142,6 +142,7 @@ class AuthController extends Controller
         return redirect('/login');
     }
 
+
     public function forgotPassword(Request $request)
     {
         $validated = $request->validate(['email' => ['required', 'email:rfc', 'max:255']]);
