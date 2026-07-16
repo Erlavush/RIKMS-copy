@@ -28,6 +28,12 @@ class SecurityConfigurationTest extends TestCase
         $this->assertStringContainsString('DEPLOY_TRAFFIC_ARGS=(--tag="$RELEASE_TAG")', $deployment);
         $this->assertStringContainsString('if [[ -n "$PREVIOUS_REVISION" ]]', $deployment);
         $this->assertStringContainsString('DEPLOY_TRAFFIC_ARGS+=(--no-traffic)', $deployment);
+        $this->assertStringContainsString("--flatten='status.traffic'", $deployment);
+        $this->assertStringContainsString('status.traffic.percent=100', $deployment);
+        $this->assertStringNotContainsString(
+            'PREVIOUS_REVISION="$($GCLOUD_BIN run services describe',
+            $deployment
+        );
     }
 
     public function test_generated_security_evidence_is_ignored_and_not_publicly_served(): void

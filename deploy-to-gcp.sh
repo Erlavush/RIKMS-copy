@@ -205,7 +205,12 @@ fi
 unset DB_PASSWORD RIKMS_DB_PASSWORD
 
 ENV_FILE="$(mktemp)"
-PREVIOUS_REVISION="$($GCLOUD_BIN run services describe "$SERVICE_NAME" --region="$REGION" --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)"
+PREVIOUS_REVISION="$($GCLOUD_BIN run services list \
+    --region="$REGION" \
+    --flatten='status.traffic' \
+    --filter="metadata.name=${SERVICE_NAME} AND status.traffic.percent=100" \
+    --format='value(status.traffic.revisionName)' \
+    --limit=1 2>/dev/null || true)"
 DEPLOY_TRAFFIC_ARGS=(--tag="$RELEASE_TAG")
 if [[ -n "$PREVIOUS_REVISION" ]]; then
     # Cloud Run accepts --no-traffic only when updating an existing service.
