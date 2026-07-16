@@ -93,7 +93,7 @@ incoming/<local|staging|production>/<revision>/<provider>-<unique-id>.json
 
 The scheduled `rikms:security-import-pending` command imports a bounded batch, normalizes and redacts observations, then moves each object to `processed/` or `failed/`. The database stores a SHA-256 digest so a report cannot be imported twice.
 
-The GitHub staging workflow authenticates with short-lived Workload Identity Federation credentials and grants its uploader identity only `roles/storage.objectCreator` on the security-report bucket. After an administrator runs `configure-github-security-oidc.sh`, copy the printed values into the protected `security-staging` GitHub environment and store the two synthetic tester credentials as environment secrets.
+The GitHub staging workflow authenticates with short-lived Workload Identity Federation credentials bound to the exact `security-staging` environment subject and grants its uploader identity only `roles/storage.objectCreator` on the security-report bucket. Uploads use an `if-generation-match=0` precondition so evidence is create-only and cannot overwrite an existing object. After an administrator runs `configure-github-security-oidc.sh`, copy the printed values into the protected `security-staging` GitHub environment and store the two synthetic tester credentials as environment secrets.
 
 ## Finding contract
 

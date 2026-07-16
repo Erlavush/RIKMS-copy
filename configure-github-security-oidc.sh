@@ -6,6 +6,7 @@ set -Eeuo pipefail
 
 GCLOUD_BIN="${GCLOUD_BIN:-gcloud}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-Erlavush/RIKMS}"
+GITHUB_ENVIRONMENT="${GITHUB_ENVIRONMENT:-security-staging}"
 POOL_ID="${POOL_ID:-github-actions}"
 PROVIDER_ID="${PROVIDER_ID:-github}"
 SERVICE_ACCOUNT_NAME="${SERVICE_ACCOUNT_NAME:-rikms-security-uploader}"
@@ -40,7 +41,7 @@ if ! $GCLOUD_BIN iam workload-identity-pools providers describe "$PROVIDER_ID" \
         --attribute-condition="assertion.repository == '${GITHUB_REPOSITORY}'"
 fi
 
-PRINCIPAL="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/attribute.repository/${GITHUB_REPOSITORY}"
+PRINCIPAL="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/subject/repo:${GITHUB_REPOSITORY}:environment:${GITHUB_ENVIRONMENT}"
 $GCLOUD_BIN iam service-accounts add-iam-policy-binding "$SERVICE_ACCOUNT" \
     --role=roles/iam.workloadIdentityUser \
     --member="$PRINCIPAL" >/dev/null
