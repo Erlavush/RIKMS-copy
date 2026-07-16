@@ -81,6 +81,27 @@ class SecurityLabTest(unittest.TestCase):
         self.assertNotIn("onclick=", page)
         self.assertNotIn("oninput=", page)
 
+    def test_procedural_gait_keeps_eight_rigid_minecraft_legs_and_reduced_motion(self) -> None:
+        project_root = Path(__file__).resolve().parents[2]
+        page = original_page("unit-token")
+        css = original_css()
+        javascript = (project_root / "security" / "lab" / "dashboard" / "dashboard.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual(8, page.count('class="leg '))
+        self.assertEqual(8, page.count('class="cube leg-box"'))
+        self.assertIn(".spider-viewport.procedural-spider .leg", css)
+        self.assertIn("prefers-reduced-motion: reduce", css)
+        self.assertIn("const minecraftLegs = [", javascript)
+        self.assertIn('{ selector: ".leg.l1", side: -1, phase: 0', javascript)
+        self.assertIn('{ selector: ".leg.r1", side: 1, phase: Math.PI', javascript)
+        self.assertIn("Math.exp(-response * deltaSeconds)", javascript)
+        self.assertIn('viewport.dataset.gait = "idle"', javascript)
+        self.assertIn("window.requestAnimationFrame(animate)", javascript)
+        self.assertIn('document.addEventListener("visibilitychange"', javascript)
+        self.assertNotIn('procedural-spider[data-gait="crawl"] .mc-spider', css)
+
     def test_dashboard_and_ai_endpoints_are_loopback_only(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

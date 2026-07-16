@@ -12,6 +12,115 @@ const setText = (id, value) => {
 };
 const asNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 
+// Preserve Jaylord's original A/B leg pairing so the rigid cuboids keep their silhouette.
+const minecraftLegs = [
+  { selector: ".leg.l1", side: -1, phase: 0, reach: 1.08, feeler: true },
+  { selector: ".leg.r1", side: 1, phase: Math.PI, reach: 1.08, feeler: true },
+  { selector: ".leg.l2", side: -1, phase: Math.PI, reach: 0.92, feeler: false },
+  { selector: ".leg.r2", side: 1, phase: 0, reach: 0.92, feeler: false },
+  { selector: ".leg.l3", side: -1, phase: 0, reach: 0.92, feeler: false },
+  { selector: ".leg.r3", side: 1, phase: Math.PI, reach: 0.92, feeler: false },
+  { selector: ".leg.l4", side: -1, phase: Math.PI, reach: 1.08, feeler: false },
+  { selector: ".leg.r4", side: 1, phase: 0, reach: 1.08, feeler: false },
+];
+
+function configureProceduralSpider() {
+  const viewport = byId("spider-viewport");
+  const spider = viewport?.querySelector(".mc-spider");
+  if (!viewport || !spider) return;
+
+  const legs = minecraftLegs
+    .map((definition) => ({ ...definition, element: viewport.querySelector(definition.selector) }))
+    .filter((leg) => leg.element);
+  if (legs.length !== 8) return;
+
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let gaitPhase = 0;
+  let activity = 0;
+  let previousTime = performance.now();
+
+  const angle = (value) => `${value.toFixed(3)}deg`;
+  const distance = (value) => `${value.toFixed(3)}px`;
+
+  function resetPose() {
+    activity = 0;
+    viewport.dataset.gait = "reduced-motion";
+    legs.forEach(({ element }) => {
+      element.style.setProperty("--gait-yaw", "0deg");
+      element.style.setProperty("--gait-roll", "0deg");
+      element.style.setProperty("--gait-pitch", "0deg");
+    });
+    spider.style.setProperty("--body-x", "0px");
+    spider.style.setProperty("--body-y", "0px");
+    spider.style.setProperty("--body-z", "0px");
+    spider.style.setProperty("--body-pitch", "0deg");
+    spider.style.setProperty("--body-yaw", "0deg");
+    spider.style.setProperty("--body-roll", "0deg");
+  }
+
+  function animate(time) {
+    const deltaSeconds = Math.min(0.05, Math.max(0, (time - previousTime) / 1000));
+    previousTime = time;
+
+    if (reducedMotion.matches) {
+      resetPose();
+      window.requestAnimationFrame(animate);
+      return;
+    }
+    if (document.hidden) {
+      window.requestAnimationFrame(animate);
+      return;
+    }
+
+    const isCrawling = viewport.classList.contains("scanning");
+    const targetActivity = isCrawling ? 1 : 0;
+    const response = isCrawling ? 5.8 : 3.2;
+    activity += (targetActivity - activity) * (1 - Math.exp(-response * deltaSeconds));
+    if (!isCrawling && activity < 0.001) activity = 0;
+
+    gaitPhase += deltaSeconds * (0.8 + activity * 6.4);
+    const idleWave = Math.sin(time * 0.00135);
+    const stepWave = Math.sin(gaitPhase);
+    const strideWave = Math.cos(gaitPhase);
+    const bodyLift = (1 - Math.cos(gaitPhase * 2)) * 0.5;
+
+    legs.forEach(({ element, side, phase, reach, feeler }) => {
+      const legPhase = gaitPhase + phase;
+      const stride = Math.cos(legPhase);
+      const idleFeeler = feeler ? side * idleWave * 0.8 * (1 - activity) : 0;
+      const yaw = side * -stride * 2.75 * reach * activity + idleFeeler;
+      const roll = side * stride * 5.5 * reach * activity;
+      const pitch = -stride * 7 * reach * activity;
+
+      element.style.setProperty("--gait-yaw", angle(yaw));
+      element.style.setProperty("--gait-roll", angle(roll));
+      element.style.setProperty("--gait-pitch", angle(pitch));
+    });
+
+    const resting = 1 - activity;
+    spider.style.setProperty("--body-x", distance(stepWave * 0.45 * activity));
+    spider.style.setProperty("--body-y", distance(idleWave * 0.75 * resting - bodyLift * 1.35 * activity));
+    spider.style.setProperty("--body-z", distance(strideWave * 0.2 * activity));
+    spider.style.setProperty("--body-pitch", angle(Math.cos(gaitPhase * 2) * 0.35 * activity));
+    spider.style.setProperty("--body-yaw", angle(idleWave * 0.2 * resting + stepWave * 0.45 * activity));
+    spider.style.setProperty("--body-roll", angle(-stepWave * 0.65 * activity));
+    viewport.dataset.gait = activity > 0.08 ? (isCrawling ? "crawl" : "settling") : "idle";
+
+    window.requestAnimationFrame(animate);
+  }
+
+  viewport.classList.add("procedural-spider");
+  viewport.dataset.gait = "idle";
+  reducedMotion.addEventListener("change", () => {
+    previousTime = performance.now();
+    if (reducedMotion.matches) resetPose();
+  });
+  document.addEventListener("visibilitychange", () => {
+    previousTime = performance.now();
+  });
+  window.requestAnimationFrame(animate);
+}
+
 function displayTime(value) {
   if (!value) return "Pending scan...";
   const parsed = new Date(value);
@@ -362,6 +471,7 @@ function configureInteractions() {
   byId("zapSearch")?.addEventListener("input", () => filterRows("zapSearch", "zapTableBody"));
 }
 
+configureProceduralSpider();
 configureInteractions();
 poll();
 setInterval(poll, 1500);

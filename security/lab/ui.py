@@ -39,6 +39,36 @@ def original_css() -> str:
 .ai-finding { padding: 1rem; background: rgba(255,255,255,.02); border: 1px solid var(--border-glass); }
 .ai-finding strong, .ai-finding span { display: block; }
 .ai-finding span { margin-top: .4rem; color: var(--text-secondary); line-height: 1.5; }
+
+/* Jaylord's original rigid Minecraft geometry, driven by a procedural gait. */
+.spider-viewport.procedural-spider .mc-spider {
+    animation: none;
+    transform:
+        translate3d(var(--body-x, 0px), calc(5px + var(--body-y, 0px)), var(--body-z, 0px))
+        rotateX(calc(-20deg + var(--body-pitch, 0deg)))
+        rotateY(calc(-35deg + var(--body-yaw, 0deg)))
+        rotateZ(var(--body-roll, 0deg))
+        scale3d(1.7, 1.7, 1.7);
+    transform-style: preserve-3d;
+    will-change: transform;
+}
+.spider-viewport.procedural-spider .leg,
+.spider-viewport.procedural-spider.scanning .leg {
+    animation: none !important;
+    transform:
+        translate3d(var(--tx), var(--ty), var(--tz))
+        rotateY(calc(var(--rot-y) + var(--gait-yaw, 0deg)))
+        rotateZ(calc(var(--rot-z) + var(--gait-roll, 0deg)))
+        rotateX(var(--gait-pitch, 0deg));
+    will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+    .spider-viewport.procedural-spider .mc-spider,
+    .spider-viewport.procedural-spider .leg {
+        animation: none !important;
+        will-change: auto;
+    }
+}
 """
 
 

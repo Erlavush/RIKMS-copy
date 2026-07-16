@@ -47,6 +47,7 @@ Build and operate RIKMS as a privacy-preserving research repository. Correct aut
 - `python -m security.lab` is Jaylord's standalone developer dashboard. Keep it independent from Laravel routes and bind it to `127.0.0.1` only.
 - Preserve the Minecraft-inspired spider, the Tests/Larastan/ZAP/SCA/Native views, and Jaylord's authorship while improving their implementation behind stable report contracts.
 - Treat `security/lab/dashboard/jaylord-original.html` as the visual source of truth from Jaylord's `fd6b736` dashboard. Do not redesign its palette, typography, layout, radar animation, or spider geometry; extend it only in the same visual language.
+- Keep the procedural spider gait in `dashboard.js` transform-only and Minecraft-authentic: eight original rigid cuboid legs, Jaylord's alternating mirrored leg pairs, smooth start/stop blending, and a reduced-motion static pose. Never apply a CSS `filter` to the 3D spider parent because it flattens the cuboid model. Do not replace Jaylord's model with a generic SVG, canvas asset, or realistic jointed spider.
 - The dashboard is viewable without a RIKMS login. Only authenticated test cases need synthetic accounts; never weaken RIKMS authentication to make the dashboard convenient.
 - No scan starts merely because the dashboard opens. Code, passive web/API, local AI, ZAP and active modes require explicit selection.
 - All scanner processes use argument arrays, `shell=False`, finite timeouts, bounded output, checked exit statuses and fresh private report paths.

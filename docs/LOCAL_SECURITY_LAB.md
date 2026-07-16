@@ -39,6 +39,12 @@ changes are behind that visual layer: remote assets are local, inline event
 handlers are removed, scans require a click, report values render as text, and
 the health circle now reports evidence coverage rather than claiming the
 application is secure. New local-AI evidence uses the same visual language.
+The eight original rigid cuboid legs are also retained. Their active scan
+motion uses Jaylord's alternating leg pairs as a Minecraft-style procedural
+gait, with smooth acceleration and settling, subtle idle feeler movement, and
+body sway derived from the same walk cycle. The 3D parent must not use CSS
+filters because grouping effects flatten the cuboid model. Reduced-motion
+preferences produce a static pose.
 
 ## Windows quick start
 
