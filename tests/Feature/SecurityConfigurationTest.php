@@ -38,6 +38,22 @@ class SecurityConfigurationTest extends TestCase
         $this->assertDirectoryDoesNotExist(public_path('security'));
     }
 
+    public function test_container_restores_runtime_cache_ownership_after_warming_views(): void
+    {
+        $entrypoint = file_get_contents(base_path('docker/entrypoint.sh'));
+        $this->assertIsString($entrypoint);
+
+        $viewCache = strpos($entrypoint, 'php artisan view:cache');
+        $runtimeOwnership = strpos(
+            $entrypoint,
+            'chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache'
+        );
+
+        $this->assertIsInt($viewCache);
+        $this->assertIsInt($runtimeOwnership);
+        $this->assertGreaterThan($viewCache, $runtimeOwnership);
+    }
+
     public function test_windows_teammate_workflow_is_versioned_and_ci_verified(): void
     {
         $workflow = file_get_contents(base_path('.github/workflows/ci.yml'));
