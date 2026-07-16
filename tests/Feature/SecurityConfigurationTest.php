@@ -25,6 +25,9 @@ class SecurityConfigurationTest extends TestCase
         $this->assertStringContainsString('APP_DEBUG: "false"', $deployment);
         $this->assertStringContainsString('SESSION_SECURE_COOKIE: "true"', $deployment);
         $this->assertStringContainsString('SESSION_HTTP_ONLY: "true"', $deployment);
+        $this->assertStringContainsString('DEPLOY_TRAFFIC_ARGS=(--tag="$RELEASE_TAG")', $deployment);
+        $this->assertStringContainsString('if [[ -n "$PREVIOUS_REVISION" ]]', $deployment);
+        $this->assertStringContainsString('DEPLOY_TRAFFIC_ARGS+=(--no-traffic)', $deployment);
     }
 
     public function test_generated_security_evidence_is_ignored_and_not_publicly_served(): void
