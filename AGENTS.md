@@ -17,10 +17,29 @@ Build and operate RIKMS as a privacy-preserving research repository. Correct aut
 
 1. Fetch before comparing branches.
 2. Preserve unrelated worktree changes. Use a separate worktree for merges or broad integration.
-3. Branch from current `origin/main` as `agent/<description>` or a teammate-specific short-lived branch.
+3. Branch from current `origin/main` as `codex/<description>` for Codex work or a teammate-specific short-lived branch.
 4. Stage only intended files. Never use generated reports, `.env`, tokens, PDFs, database files, or raw security evidence as commit content.
 5. Keep authored commits when integrating teammate work. Put reconciliation and hardening in separate commits.
 6. Never rewrite or force-push a teammate branch unless the owner explicitly authorizes it and sensitive history requires it.
+
+## Worktree and task lifecycle
+
+- Keep `/home/eru/RIKMS` as the canonical checkout and return it to a clean `main` between completed tasks. Use a named worktree such as `../RIKMS-<task>` for parallel or long-running work.
+- Before starting, run `git status --short --branch`, `git fetch --prune origin`, and `git worktree list`. Start from `origin/main`, not from a stale local task branch.
+- One branch may be checked out in only one worktree. If Git reports that `main` is already in another worktree, inspect that worktree; never force the checkout or delete its directory manually.
+- Give each agent one owned branch/worktree and a bounded file scope. Handoffs must state the branch, worktree, changed files, verification performed, and any remaining risk.
+- Keep commits small enough to review and avoid mixing cleanup, feature work, generated artifacts, and production operations in one commit.
+- After a PR merges, fetch and verify `git merge-base --is-ancestor <branch> origin/main` before removing its clean worktree with `git worktree remove` and its local branch with `git branch -d`.
+- Never delete a dirty worktree, an unmerged branch, or a stash during routine cleanup. Name recovery stashes clearly and review them before applying or dropping them.
+- Never run broad cleanup commands such as `git clean -fdx` or `git clean -fdX`; they can erase `.env`, the local database, private documents, dependencies, and security evidence. Use `git clean -nd` first and remove only explicit generated targets.
+- Keep GitHub `main` protected, use pull requests for changes, and enable automatic deletion of merged remote task branches. Preserve unmerged teammate branches until their owner or an integration record confirms disposal.
+
+## Efficient verification
+
+1. During implementation, run the narrowest formatter, analyzer, and focused tests that cover the touched boundary.
+2. Before requesting review, run the complete required check suite once from a clean dependency state.
+3. Re-run only affected checks after documentation-only or mechanical follow-up edits, then finish with `git diff --check` and a clean `git status` review.
+4. Do not claim a check passed from an older branch, worktree, dependency lockfile, or generated report; record the tested commit when handing work off.
 
 ## Windows teammate compatibility
 
