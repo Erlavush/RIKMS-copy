@@ -27,7 +27,6 @@ if sys.platform == "win32":
 console = Console()
 
 OLLAMA_URL = "http://127.0.0.1:11434"
-DOCLING_URL = "http://127.0.0.1:5001"
 MODEL_NAME = "gemma2:2b"
 CHUNK_SIZE = 1000  # Target characters per chunk
 DEFAULT_TOP_K = 4
@@ -43,41 +42,10 @@ class MetadataExtractorRAG:
         self.needs_ocr = False
 
     def load_document(self):
-        """Reads PDF by calling the Docling HTTP API server instead of importing Docling inline."""
+        """Reads plain text / markdown file directly from the filesystem."""
         if not self.file_path.exists():
             raise FileNotFoundError(f"File not found at: {self.file_path}")
-
-        if self.file_path.suffix.lower() == ".pdf":
-            console.print(f"[cyan]Requesting Docling conversion from API server...[/cyan]")
-            try:
-                r = requests.post(
-                    f"{DOCLING_URL}/convert",
-                    json={"file": str(self.file_path), "use_cache": True},
-                    timeout=300,
-                )
-                if r.status_code == 200:
-                    data = r.json()
-                    if data.get("error") and not data.get("markdown"):
-                        raise RuntimeError(data["error"])
-                    self.content = data.get("markdown", "")
-                    self.needs_ocr = bool(data.get("needs_ocr", False))
-                    cached = data.get("cached", False)
-                    if cached:
-                        console.print(f"[cyan]✓ Using cached Docling markdown.[/cyan]")
-                    else:
-                        label = "[yellow]✓ OCR-assisted conversion complete.[/yellow]" if self.needs_ocr \
-                            else "[green]✓ Docling conversion complete.[/green]"
-                        console.print(label)
-                else:
-                    raise RuntimeError(f"Docling server returned HTTP {r.status_code}")
-            except requests.exceptions.ConnectionError:
-                raise RuntimeError(
-                    "Docling server is not running. Start it with: "
-                    "python scripts/docling_server.py"
-                )
-        else:
-            self.content = self.file_path.read_text(encoding="utf-8")
-
+        self.content = self.file_path.read_text(encoding="utf-8")
 
         # Chunking logic
         lines = self.content.splitlines()
@@ -307,6 +275,7 @@ Context:
 
 def main():
     global MODEL_NAME
+    import time
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", type=str, required=True)
     parser.add_argument("--action", type=str, default="extract")
@@ -315,11 +284,17 @@ def main():
     args = parser.parse_args()
     
     MODEL_NAME = args.model
+    
     extractor = MetadataExtractorRAG(args.file)
     extractor.load_document()
-    extractor.build_index()
     
+    start_model = time.time()
+    extractor.build_index()
     extracted_data = extractor.run_full_pipeline()
+    model_duration = int(time.time() - start_model)
+    
+    extracted_data["model_duration"] = model_duration
+    
     Path(args.output).write_text(json.dumps(extracted_data, indent=4), encoding="utf-8")
     sys.exit(0)
 

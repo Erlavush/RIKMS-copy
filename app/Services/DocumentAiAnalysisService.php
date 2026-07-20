@@ -111,6 +111,8 @@ class DocumentAiAnalysisService
             'errorMessage'    => $analysis->error_message,
             'requestedBy'     => $analysis->requester?->name,
             'reviewedBy'      => $analysis->reviewer?->name,
+            'ocrDuration'     => $analysis->ocr_duration !== null ? (int) $analysis->ocr_duration : null,
+            'modelDuration'   => $analysis->model_duration !== null ? (int) $analysis->model_duration : null,
             'createdAt'       => $analysis->created_at->toISOString(),
             'startedAt'       => $analysis->started_at?->toISOString(),
             'completedAt'     => $analysis->completed_at?->toISOString(),

@@ -41,6 +41,7 @@ class DocumentAiAnalysis extends Model
         'source_hash', 'extraction_method', 'suggestions', 'accepted_fields', 'confidence',
         'input_tokens', 'output_tokens', 'reasoning_tokens', 'estimated_cost_usd',
         'error_code', 'error_message', 'started_at', 'completed_at', 'reviewed_at',
+        'ocr_duration', 'model_duration',
     ];
 
     protected function casts(): array
@@ -53,6 +54,8 @@ class DocumentAiAnalysis extends Model
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
             'reviewed_at' => 'datetime',
+            'ocr_duration' => 'integer',
+            'model_duration' => 'integer',
         ];
     }
 

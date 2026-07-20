@@ -31,7 +31,10 @@ class VertexDocumentAnalysisService implements DocumentAnalysisDriver
             throw new RuntimeException('Vertex AI is not fully configured.');
         }
 
+        $startOcr = microtime(true);
         $extracted = $this->extractor->extract($document);
+        $ocrDuration = (int) round(microtime(true) - $startOcr);
+        
         $parts = $extracted
             ? [['text' => $this->analysisInstruction()."\n\nDOCUMENT TEXT:\n".$extracted['text']]]
             : [$this->pdfPart($document), ['text' => $this->analysisInstruction()]];
@@ -43,6 +46,7 @@ class VertexDocumentAnalysisService implements DocumentAnalysisDriver
             rawurlencode($model),
         );
 
+        $startModel = microtime(true);
         $response = Http::withToken($this->tokens->token())
             ->acceptJson()
             ->timeout((int) config('rikms.ai.timeout_seconds'))
@@ -59,6 +63,7 @@ class VertexDocumentAnalysisService implements DocumentAnalysisDriver
                     'responseSchema' => $this->responseSchema(),
                 ],
             ]);
+        $modelDuration = (int) round(microtime(true) - $startModel);
 
         if (! $response->successful()) {
             throw new RuntimeException('Vertex AI request failed with HTTP '.$response->status().'.');
@@ -80,6 +85,8 @@ class VertexDocumentAnalysisService implements DocumentAnalysisDriver
         return [
             'suggestions' => $suggestions,
             'extraction_method' => $extracted['method'] ?? 'gemini_pdf_understanding',
+            'ocr_duration' => $ocrDuration,
+            'model_duration' => $modelDuration,
             'input_tokens' => $input,
             'output_tokens' => $output,
             'reasoning_tokens' => $reasoning,

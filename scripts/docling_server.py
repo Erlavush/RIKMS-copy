@@ -49,17 +49,30 @@ if sys.platform == "win32":
 # ── Accelerator selection ────────────────────────────────────────────────────
 try:
     import torch
+    # For Windows, add torch's bundled CUDA/cuDNN DLL directory to the DLL search path
+    # so that onnxruntime-gpu can locate them (e.g. cudnn64_9.dll)
+    if sys.platform == "win32":
+        import os
+        torch_lib = os.path.join(os.path.dirname(torch.__file__), "lib")
+        if os.path.isdir(torch_lib):
+            os.add_dll_directory(torch_lib)
     _CUDA_AVAILABLE = torch.cuda.is_available()
 except ImportError:
     _CUDA_AVAILABLE = False
 
 try:
-    from docling.datamodel.pipeline_options import (
-        PdfPipelineOptions,
-        AcceleratorOptions,
-        AcceleratorDevice,
-    )
-    _ACCEL_DEVICE = AcceleratorDevice.AUTO   # AUTO picks CUDA → MPS → CPU
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    _HAS_PIPELINE_OPTIONS = True
+except ImportError:
+    _HAS_PIPELINE_OPTIONS = False
+
+try:
+    from docling.datamodel.pipeline_options import AcceleratorOptions, AcceleratorDevice
+    # Prioritize CUDA if PyTorch indicates it is available
+    if _CUDA_AVAILABLE:
+        _ACCEL_DEVICE = AcceleratorDevice.CUDA
+    else:
+        _ACCEL_DEVICE = AcceleratorDevice.AUTO
     _HAS_ACCEL_OPTIONS = True
 except ImportError:
     _HAS_ACCEL_OPTIONS = False
@@ -78,17 +91,23 @@ def _build_converter(force_ocr: bool):
     from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.base_models import InputFormat
 
-    if not _HAS_ACCEL_OPTIONS:
+    if not _HAS_PIPELINE_OPTIONS:
         return DocumentConverter()
 
-    options = PdfPipelineOptions(
-        do_ocr=force_ocr,
-        do_table_structure=True,
-        accelerator_options=AcceleratorOptions(
-            num_threads=4,
-            device=_ACCEL_DEVICE,          # AUTO → CUDA if present
-        ),
-    )
+    if _HAS_ACCEL_OPTIONS:
+        options = PdfPipelineOptions(
+            do_ocr=force_ocr,
+            do_table_structure=True,
+            accelerator_options=AcceleratorOptions(
+                num_threads=4,
+                device=_ACCEL_DEVICE,          # AUTO → CUDA if present
+            ),
+        )
+    else:
+        options = PdfPipelineOptions(
+            do_ocr=force_ocr,
+            do_table_structure=True,
+        )
 
     return DocumentConverter(
         format_options={
@@ -158,7 +177,26 @@ def convert_pdf(file_path_str: str, use_cache: bool = True):
             "cached": True, "error": None,
         }
 
-    # ── Step 3: GPU-accelerated Docling conversion ──────────────────────────
+    # ── Step 3: Fast-path direct text extraction for digital PDFs (no OCR needed) ──
+    if not needs_ocr:
+        try:
+            import fitz
+            doc = fitz.open(str(file_path))
+            text_parts = []
+            for page in doc:
+                text_parts.append(page.get_text())
+            doc.close()
+            md_content = "\n\n".join(text_parts)
+            converted_path.write_text(md_content, encoding="utf-8")
+            return {
+                "markdown": md_content, "needs_ocr": needs_ocr,
+                "cached": False, "error": None,
+            }
+        except Exception as e:
+            # Fall back to Docling below
+            print(f"[docling-server] Direct fitz extraction failed, falling back to Docling: {e}", flush=True)
+
+    # ── Step 4: GPU-accelerated Docling conversion (for scanned images) ─────
     try:
         converter = get_converter(force_ocr=needs_ocr)
         result = converter.convert(str(file_path))
@@ -253,12 +291,42 @@ class DoclingHandler(BaseHTTPRequestHandler):
         self.send_json(404, {"error": "Not found"})
 
 
+def assert_gpu_available():
+    import sys
+    if not _CUDA_AVAILABLE:
+        print("[docling-server] ERROR: PyTorch CUDA is not available. GPU exclusivity is enabled.", file=sys.stderr)
+        sys.exit(1)
+        
+    try:
+        import onnxruntime as ort
+        # Verify CUDA provider is available in ONNX Runtime
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            print("[docling-server] ERROR: CUDAExecutionProvider is not available in ONNX Runtime. GPU exclusivity is enabled.", file=sys.stderr)
+            sys.exit(1)
+            
+        # Test loading the RapidOCR detector model to verify CUDA DLLs are working
+        import rapidocr
+        from pathlib import Path
+        model_path = Path(rapidocr.__file__).parent / "models" / "PP-OCRv6_det_small.onnx"
+        if model_path.exists():
+            sess = ort.InferenceSession(str(model_path), providers=["CUDAExecutionProvider"])
+            if "CUDAExecutionProvider" not in sess.get_providers():
+                print("[docling-server] ERROR: ONNX Runtime failed to load CUDAExecutionProvider (fell back to CPU). GPU exclusivity is enabled.", file=sys.stderr)
+                sys.exit(1)
+    except Exception as e:
+        print(f"[docling-server] ERROR: GPU verification failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="RIKMS Docling HTTP Server (GPU)")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5001)
     args = parser.parse_args()
+
+    print(f"[docling-server] Verifying GPU/CUDA availability (exclusivity mode)...", flush=True)
+    assert_gpu_available()
 
     device_label = "CUDA/GPU" if _CUDA_AVAILABLE else "CPU"
     print(f"[docling-server] Accelerator: {device_label}", flush=True)

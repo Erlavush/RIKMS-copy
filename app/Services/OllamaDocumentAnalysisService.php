@@ -18,12 +18,53 @@ class OllamaDocumentAnalysisService implements DocumentAnalysisDriver
         $script = base_path('scripts/paper_metadata_extractor.py');
         $pdfPath = Storage::disk('documents')->path($document->file_path);
 
+        // 1. Perform Docling conversion directly from PHP
+        $base = rtrim((string) config('rikms.ai.docling.base_url', 'http://127.0.0.1:5001'), '/');
+        $startOcr = microtime(true);
+
+        $response = Http::timeout(300)->post("{$base}/convert", [
+            'file' => $pdfPath,
+            'use_cache' => true,
+        ]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Docling conversion failed: ' . $response->body());
+        }
+
+        $ocrDuration = (int) (microtime(true) - $startOcr);
+        $data = $response->json();
+        $needsOcr = (bool) ($data['needs_ocr'] ?? false);
+        $markdown = $data['markdown'] ?? '';
+
+        // 2. Resolve cached markdown file path
+        $fileDir = dirname($pdfPath);
+        $fileStem = pathinfo($pdfPath, PATHINFO_FILENAME);
+        $mdPath = dirname($fileDir) . '/markdown_docling/' . $fileStem . '_docling.md';
+
+        if (! file_exists($mdPath) && $markdown) {
+            if (! is_dir(dirname($mdPath))) {
+                mkdir(dirname($mdPath), 0755, true);
+            }
+            file_put_contents($mdPath, $markdown);
+        }
+
         $tempOutput = tempnam(sys_get_temp_dir(), 'rikms-ollama-');
 
-        $process = Process::timeout(config('rikms.ai.timeout_seconds', 300))->run([
+        $analysis = \App\Models\DocumentAiAnalysis::query()
+            ->where('document_id', $document->id)
+            ->whereIn('status', ['queued', 'processing'])
+            ->latest()
+            ->first();
+        $needsOcrPre = $analysis ? (bool) $analysis->needs_ocr : false;
+
+        // Remove timeout (null) for OCR processes to allow processing scanned/heavy files
+        $timeout = $needsOcrPre ? null : (int) config('rikms.ai.timeout_seconds', 300);
+
+        // 3. Run the python script passing the markdown path
+        $process = Process::timeout($timeout)->run([
             $python,
             $script,
-            '--file', $pdfPath,
+            '--file', $mdPath,
             '--action', 'extract',
             '--output', $tempOutput,
             '--model', config('rikms.ai.ollama.model', 'gemma2:2b'),
@@ -41,13 +82,15 @@ class OllamaDocumentAnalysisService implements DocumentAnalysisDriver
             throw new RuntimeException('Failed to parse extraction output.');
         }
 
-        $needsOcr = (bool) ($suggestions['needs_ocr'] ?? false);
-        unset($suggestions['needs_ocr']); // keep suggestions clean for the schema validator
+        $modelDuration = $suggestions['model_duration'] ?? null;
+        unset($suggestions['model_duration']); // keep suggestions clean for the schema validator
 
         return [
             'suggestions'       => $suggestions,
             'extraction_method' => $needsOcr ? 'local_gemma_rag_docling_ocr' : 'local_gemma_rag_docling',
             'needs_ocr'         => $needsOcr,
+            'ocr_duration'      => $ocrDuration,
+            'model_duration'    => $modelDuration,
             'input_tokens'      => 0,
             'output_tokens'     => 0,
             'reasoning_tokens'  => 0,

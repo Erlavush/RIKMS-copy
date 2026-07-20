@@ -40,6 +40,14 @@ interface ReportProject {
 
 const REPORT_SECTORS = ["Government", "Academe", "Business", "Civil Society", "Media"];
 
+const EXTRACTION_METHODS: Record<string, string> = {
+    local_gemma_rag_docling_ocr: "Local Gemma (RAG + Docling OCR)",
+    local_gemma_rag_docling: "Local Gemma (RAG + Docling)",
+    embedded_pdf_text: "Direct Text Extraction",
+    document_ai_ocr: "Google Document AI OCR",
+    gemini_pdf_understanding: "Gemini PDF Understanding",
+};
+
 const EMPTY_FORM: MetadataForm = {
     title: "",
     year: String(new Date().getFullYear()),
@@ -119,6 +127,7 @@ export function ResearchMetadata() {
     const [aiBusy, setAiBusy] = useState(false);
     const [appliedAnalysisId, setAppliedAnalysisId] = useState<number | null>(null);
     const [acceptedAiFields, setAcceptedAiFields] = useState<string[]>([]);
+    const [elapsed, setElapsed] = useState<number | null>(null);
 
     useEffect(() => {
         const document = detail.data?.data;
@@ -169,7 +178,26 @@ export function ResearchMetadata() {
 
         const timer = window.setInterval(() => void aiAnalysis.refresh(), 3000);
         return () => window.clearInterval(timer);
-    }, [aiAnalysis, aiAnalysis.data?.data?.status]);
+    }, [aiAnalysis.refresh, aiAnalysis.data?.data?.status]);
+
+    useEffect(() => {
+        const analysis = aiAnalysis.data?.data;
+        if (!analysis || (analysis.status !== "queued" && analysis.status !== "processing")) {
+            setElapsed(null);
+            return;
+        }
+
+        const startedAt = analysis.startedAt ? new Date(analysis.startedAt) : new Date(analysis.createdAt);
+        
+        const updateTimer = () => {
+            const diffMs = Date.now() - startedAt.getTime();
+            setElapsed(Math.max(0, Math.floor(diffMs / 1000)));
+        };
+
+        updateTimer();
+        const interval = window.setInterval(updateTimer, 1000);
+        return () => window.clearInterval(interval);
+    }, [aiAnalysis.data?.data?.status, aiAnalysis.data?.data?.startedAt, aiAnalysis.data?.data?.createdAt]);
 
     useEffect(() => {
         const analysis = aiAnalysis.data?.data;
@@ -563,11 +591,45 @@ export function ResearchMetadata() {
                 )}
                 {aiAnalysis.data?.data && (
                     <div className="mt-4 rounded-xl border border-purple-100 bg-purple-50/50 p-4 text-sm">
+                        {aiAnalysis.data.data.needsOcr &&
+                            (aiAnalysis.data.data.status === "queued" ||
+                                aiAnalysis.data.data.status === "processing") && (
+                                <p className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-xs text-amber-800">
+                                    <span>🔍</span>
+                                    <span>The file is full of images, reading in OCR...</span>
+                                </p>
+                            )}
                         <div className="flex flex-wrap items-center gap-2">
                             <span className="font-semibold text-purple-900">
                                 Status: {aiAnalysis.data.data.status}
+                                {aiAnalysis.data.data.needsOcr &&
+                                    (aiAnalysis.data.data.status === "queued" ||
+                                        aiAnalysis.data.data.status === "processing") && (
+                                        <span className="ml-1.5 text-xs text-amber-700 font-medium animate-pulse">
+                                            (Reading in OCR...)
+                                        </span>
+                                    )}
                             </span>
                             <span className="text-gray-500">Model: {aiAnalysis.data.data.model}</span>
+                            {aiAnalysis.data.data.extractionMethod && (
+                                <span className="text-gray-500">
+                                    Mode:{" "}
+                                    {(() => {
+                                        const method = aiAnalysis.data.data.extractionMethod;
+                                        if (method.startsWith("local_gemma")) {
+                                            const hasDocling = aiAnalysis.data.data.ocrDuration !== null && aiAnalysis.data.data.ocrDuration > 0;
+                                            if (hasDocling) {
+                                                return method === "local_gemma_rag_docling_ocr"
+                                                    ? "Local Gemma (RAG + Docling OCR)"
+                                                    : "Local Gemma (RAG + Docling)";
+                                            } else {
+                                                return "Local Gemma";
+                                            }
+                                        }
+                                        return EXTRACTION_METHODS[method] ?? method;
+                                    })()}
+                                </span>
+                            )}
                             {aiAnalysis.data.data.confidence !== null && (
                                 <span className="text-gray-500">
                                     Confidence: {Math.round(aiAnalysis.data.data.confidence * 100)}%
@@ -578,6 +640,18 @@ export function ResearchMetadata() {
                                     Estimated model cost: ${aiAnalysis.data.data.estimatedCostUsd.toFixed(4)}
                                 </span>
                             )}
+                            {aiAnalysis.data.data.ocrDuration !== null && aiAnalysis.data.data.ocrDuration > 0 && (
+                                <span className="text-gray-500">
+                                    DOCLING: {aiAnalysis.data.data.ocrDuration}s{aiAnalysis.data.data.needsOcr ? " (OCR)" : ""}
+                                </span>
+                            )}
+                            {aiAnalysis.data.data.modelDuration !== null && (
+                                <span className="text-gray-500">
+                                    {aiAnalysis.data.data.model?.toLowerCase().includes("gemma")
+                                        ? `Local Gemma: ${aiAnalysis.data.data.modelDuration}s`
+                                        : `Model Conversion: ${aiAnalysis.data.data.modelDuration}s`}
+                                </span>
+                            )}
                         </div>
                         {aiAnalysis.data.data.needsOcr &&
                             (aiAnalysis.data.data.status === "completed" ||
@@ -585,21 +659,26 @@ export function ResearchMetadata() {
                                 <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
                                     <span>🔍</span>
                                     <span>
-                                        OCR was used — the PDF contained only scanned images. Results may
-                                        vary.
+                                        OCR was used — the PDF file was full of images and required full text recognition.
                                     </span>
                                 </p>
                             )}
                         {(aiAnalysis.data.data.status === "queued" ||
                             aiAnalysis.data.data.status === "processing") && (
                             <div className="mt-2 space-y-1.5">
-                                <p className="text-purple-800">Processing safely in the background…</p>
+                                <p className="text-purple-800 flex items-center gap-2">
+                                    <span>Processing safely in the background…</span>
+                                    {elapsed !== null && (
+                                        <span className="rounded bg-purple-100 px-2 py-0.5 text-xs font-mono font-bold text-purple-700 animate-pulse">
+                                            Elapsed: {elapsed}s
+                                        </span>
+                                    )}
+                                </p>
                                 {aiAnalysis.data.data.needsOcr && (
                                     <p className="flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
                                         <span className="text-base">⏳</span>
                                         <span>
-                                            <strong>OCR detected —</strong> this PDF contains only scanned
-                                            images. Text recognition may take several extra minutes.
+                                            <strong>OCR Mode Active —</strong> The PDF file is full of images/scanned pages. Running text recognition (OCR) now, which may take several minutes.
                                         </span>
                                     </p>
                                 )}

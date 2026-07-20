@@ -56,6 +56,8 @@ class AnalyzeRikmsDocument implements ShouldQueue
                 'confidence'        => $suggestions['overall_confidence'] ?? null,
                 'extraction_method' => $result['extraction_method'],
                 'needs_ocr'         => (bool) ($result['needs_ocr'] ?? false),
+                'ocr_duration'      => $result['ocr_duration'] ?? null,
+                'model_duration'    => $result['model_duration'] ?? null,
                 'input_tokens'      => $result['input_tokens'],
                 'output_tokens'     => $result['output_tokens'],
                 'reasoning_tokens'  => $result['reasoning_tokens'],
