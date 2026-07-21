@@ -147,6 +147,7 @@ def _ollama_generate(url: str, model: str, fixture: dict[str, Any], timeout: int
                 "prompt": _prompt(fixture["document_text"]),
                 "format": response_schema(),
                 "stream": False,
+                "think": False,
                 "options": {"temperature": 0.1, "num_ctx": 8192},
             }
         ).encode("utf-8"),
